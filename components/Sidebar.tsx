@@ -15,20 +15,23 @@ import {
   ClipboardList,
   Database,
   FileText,
+  CreditCard,
 } from "lucide-react"
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
   { icon: Megaphone, label: "Campaigns", href: "/campaigns" },
+  { icon: BarChart3, label: "Usage", href: "/usage" },
   { icon: Radio, label: "Broadcasts", href: "#" },
   { icon: MessageSquare, label: "Transactional", href: "#" },
   { icon: ClipboardList, label: "Deliveries & Drafts", href: "#" },
-]
+];
 
 const secondaryMenuItems = [
   { icon: Users, label: "People", href: "#" },
   { icon: Building2, label: "Companies", href: "#" },
+  { icon: CreditCard, label: "Billing", href: "/billing" },
   { icon: Target, label: "Segments", href: "#" },
   { icon: ClipboardList, label: "Activity Logs", href: "#" },
   { icon: Database, label: "Data Integrations", href: "#" },
