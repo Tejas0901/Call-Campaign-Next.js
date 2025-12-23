@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Mail, MessageSquare, Clock, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,6 +33,21 @@ interface Campaign {
 
 export default function CampaignCard({ campaign }: { campaign: Campaign }) {
   const [status, setStatus] = useState<string>(campaign.status);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const savedStatus = localStorage.getItem(`campaign-${campaign.id}-status`);
+    if (savedStatus) {
+      setStatus(savedStatus);
+    }
+    setHydrated(true);
+  }, [campaign.id]);
+
+  useEffect(() => {
+    if (hydrated) {
+      localStorage.setItem(`campaign-${campaign.id}-status`, status);
+    }
+  }, [status, campaign.id, hydrated]);
 
   const getIconComponent = (icon: string) => {
     switch (icon) {
@@ -51,7 +66,10 @@ export default function CampaignCard({ campaign }: { campaign: Campaign }) {
     Paused: { container: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
   };
 
-  const statusClass = statusStyles[status] ?? statusStyles.Running;
+  const statusClass = statusStyles[status] || {
+    container: "bg-gray-50 text-gray-700",
+    dot: "bg-gray-500",
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
@@ -183,14 +201,16 @@ export default function CampaignCard({ campaign }: { campaign: Campaign }) {
                 </span>
               </div>
             </div>
-            <span
-              className={`px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 ${statusClass.container}`}
-            >
+            {hydrated && (
               <span
-                className={`w-1.5 h-1.5 rounded-full ${statusClass.dot}`}
-              ></span>
-              {status}
-            </span>
+                className={`px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 ${statusClass.container}`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${statusClass.dot}`}
+                ></span>
+                {status}
+              </span>
+            )}
           </div>
         </div>
       </div>
