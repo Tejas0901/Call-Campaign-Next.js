@@ -30,7 +30,6 @@ const menuItems = [
 const secondaryMenuItems = [
   { icon: Users, label: "People", href: "#" },
   { icon: Building2, label: "Companies", href: "#" },
-  { icon: CreditCard, label: "Billing", href: "/billing" },
   { icon: Target, label: "Segments", href: "#" },
   { icon: ClipboardList, label: "Activity Logs", href: "#" },
   { icon: Database, label: "Data Integrations", href: "#" },
@@ -41,10 +40,7 @@ const billingMenuItems = [
   { icon: BarChart3, label: "Usage", href: "/usage" },
 ];
 
-const bottomMenuItems = [
-  { icon: FileText, label: "Content", href: "#" },
-  { icon: Settings, label: "Settings", href: "/settings" },
-]
+
 
 export default function Sidebar({ isOpen }: { isOpen: boolean }) {
   const pathname = usePathname()
@@ -53,9 +49,8 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
 
   return (
     <aside
-      className={`${
-        isOpen ? "w-64" : "w-0"
-      } bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden`}
+      className={`${isOpen ? "w-64" : "w-0"
+        } bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden`}
     >
       <div className="h-full flex flex-col">
         <div className="px-6 py-5 border-b border-gray-200">
@@ -75,11 +70,10 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive(item.href)
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive(item.href)
                       ? "bg-gray-100 text-gray-900"
                       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
+                    }`}
                 >
                   <Icon className="w-5 h-5" />
                   {item.label}
@@ -101,11 +95,10 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
                   <Link
                     key={item.label}
                     href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isActive(item.href)
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive(item.href)
                         ? "bg-gray-100 text-gray-900"
                         : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
+                      }`}
                   >
                     <Icon className="w-5 h-5" />
                     {item.label}
@@ -128,11 +121,10 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
                   <Link
                     key={item.label}
                     href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      isActive(item.href)
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive(item.href)
                         ? "bg-gray-100 text-gray-900"
                         : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
+                      }`}
                   >
                     <Icon className="w-5 h-5" />
                     {item.label}
@@ -143,27 +135,6 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
           </div> */}
         </div>
 
-        <div className="border-t border-gray-200 py-4">
-          <nav className="space-y-1 px-3">
-            {bottomMenuItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    isActive(item.href)
-                      ? "bg-gray-100 text-gray-900"
-                      : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
       </div>
     </aside>
   );
