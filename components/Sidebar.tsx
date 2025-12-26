@@ -115,7 +115,7 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
             </nav>
           </div>
 
-          <div className="mt-6 px-3">
+          {/* <div className="mt-6 px-3">
             <div className="px-3 py-2">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Organization
@@ -140,7 +140,7 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
                 );
               })}
             </nav>
-          </div>
+          </div> */}
         </div>
 
         <div className="border-t border-gray-200 py-4">

@@ -1,14 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import MainLayout from "@/components/layouts/MainLayout";
 import CampaignCard from "@/components/CampaignCard";
 import CreateCampaignModal from "@/components/CreateCampaignModal";
 import { campaignData } from "@/data/campaignData";
 import { Plus, ChevronDown } from "lucide-react";
 
+type Draft = {
+  id: string;
+  jobCode: string;
+  jobInfo: string;
+  savedAt: string;
+};
+
 export default function Campaigns() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [view, setView] = useState<"active" | "archived" | "drafts">("active");
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("campaignDrafts")
+          : null;
+      const parsed = raw ? JSON.parse(raw) : [];
+      setDrafts(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setDrafts([]);
+    }
+  }, []);
+
+  const deleteDraft = (id: string) => {
+    try {
+      const raw =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("campaignDrafts")
+          : null;
+      const parsed = raw ? JSON.parse(raw) : [];
+      const next = Array.isArray(parsed)
+        ? parsed.filter((d: Draft) => d.id !== id)
+        : [];
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("campaignDrafts", JSON.stringify(next));
+      }
+      setDrafts(next);
+    } catch {
+      setDrafts((prev) => prev.filter((d) => d.id !== id));
+    }
+  };
 
   return (
     <MainLayout>
@@ -26,11 +68,41 @@ export default function Campaigns() {
       <CreateCampaignModal open={isModalOpen} onOpenChange={setIsModalOpen} />
 
       <div className="flex gap-2 mb-6 pb-4 border-b border-gray-200">
-        <button className="px-4 py-2 text-sm font-medium text-primary-600 border-b-2 border-primary-600">
-          Active <span className="ml-1 text-gray-500">06</span>
+        <button
+          className={`px-4 py-2 text-sm font-medium ${
+            view === "active"
+              ? "text-primary-600 border-b-2 border-primary-600"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
+          onClick={() => setView("active")}
+        >
+          Active{" "}
+          <span className="ml-1 text-gray-500">
+            {campaignData.campaigns.length.toString().padStart(2, "0")}
+          </span>
         </button>
-        <button className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900">
-          Archived <span className="ml-1 text-gray-500">06</span>
+        <button
+          className={`px-4 py-2 text-sm font-medium ${
+            view === "archived"
+              ? "text-primary-600 border-b-2 border-primary-600"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
+          onClick={() => setView("archived")}
+        >
+          Archived <span className="ml-1 text-gray-500">00</span>
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium ${
+            view === "drafts"
+              ? "text-primary-600 border-b-2 border-primary-600"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
+          onClick={() => setView("drafts")}
+        >
+          Drafts{" "}
+          <span className="ml-1 text-gray-500">
+            {drafts.length.toString().padStart(2, "0")}
+          </span>
         </button>
       </div>
 
@@ -53,11 +125,80 @@ export default function Campaigns() {
         </button>
       </div>
 
-      <div className="space-y-4">
-        {campaignData.campaigns.map((campaign) => (
-          <CampaignCard key={campaign.id} campaign={campaign} />
-        ))}
-      </div>
+      {view === "active" && (
+        <div className="space-y-4">
+          {campaignData.campaigns.map((campaign) => (
+            <CampaignCard key={campaign.id} campaign={campaign} />
+          ))}
+        </div>
+      )}
+
+      {view === "archived" && (
+        <div className="text-gray-600">No archived campaigns.</div>
+      )}
+
+      {view === "drafts" && (
+        <div className="space-y-4">
+          {drafts.length === 0 ? (
+            <div className="text-gray-600">No drafts saved yet.</div>
+          ) : (
+            drafts.map((d) => (
+              <div
+                key={d.id}
+                className="bg-white border border-gray-200 rounded-lg p-4"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-500">
+                    Saved {new Date(d.savedAt).toLocaleString()}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded hover:bg-primary-700"
+                      onClick={() => {
+                        setSelectedDraft(d);
+                        setIsModalOpen(true);
+                      }}
+                    >
+                      Continue
+                    </button>
+                    <button
+                      className="px-3 py-1.5 text-sm bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100"
+                      onClick={() => deleteDraft(d.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 space-y-1">
+                  <div className="text-sm">
+                    <span className="font-medium">Job Code:</span>{" "}
+                    {d.jobCode || "-"}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Job Info:</span>{" "}
+                    {d.jobInfo || "-"}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      <CreateCampaignModal
+        open={isModalOpen}
+        onOpenChange={(open) => {
+          setIsModalOpen(open);
+          if (!open) setSelectedDraft(null);
+        }}
+        initialValues={selectedDraft ?? undefined}
+        onCreated={(payload) => {
+          if (payload.id) {
+            deleteDraft(payload.id);
+          }
+        }}
+        onDraftSaved={(next) => setDrafts(next)}
+      />
     </MainLayout>
   );
 }
