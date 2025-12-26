@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { Mail, MessageSquare, Clock, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
@@ -72,7 +73,8 @@ export default function CampaignCard({ campaign }: { campaign: Campaign }) {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+    <Link href={`/campaigns/${campaign.id}`} className="block">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
       <div className="flex items-start gap-4">
         <div
           className={`w-12 h-12 ${campaign.iconBg} rounded-xl flex items-center justify-center flex-shrink-0`}
@@ -90,28 +92,49 @@ export default function CampaignCard({ campaign }: { campaign: Campaign }) {
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer">
+                <button 
+                  className="p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <MoreVertical className="w-5 h-5 text-gray-400" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-32">
                 <DropdownMenuItem
-                  onClick={() => setStatus("Running")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStatus("Running");
+                  }}
                   className="hover:bg-green-50 hover:text-green-700"
                 >
                   Start
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => setStatus("Closed")}
-                  className="hover:bg-red-50 hover:text-red-700"
-                >
-                  Stop
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setStatus("Paused")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStatus("Paused");
+                  }}
                   className="hover:bg-amber-50 hover:text-amber-700"
                 >
                   Pause
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStatus("Running");
+                  }}
+                  className="hover:bg-blue-50 hover:text-blue-700"
+                >
+                  Resume
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStatus("Closed");
+                  }}
+                  className="hover:bg-red-50 hover:text-red-700"
+                >
+                  Stop
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -215,5 +238,6 @@ export default function CampaignCard({ campaign }: { campaign: Campaign }) {
         </div>
       </div>
     </div>
+    </Link>
   );
 }
