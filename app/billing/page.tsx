@@ -80,7 +80,7 @@ export default function BillingPage() {
 
               {/* Note Box */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex gap-3">
-                <AlertCircle className="w-5 h-5 text-gray-600 mt-0.5 flex-shrink-0" />
+                <AlertCircle className="w-5 h-5 text-gray-600 mt-0.5 shrink-0" />
                 <p className="text-sm text-gray-700">
                   Note: This does not reflect the status of your ChatGPT
                   account.
