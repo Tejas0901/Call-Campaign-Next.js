@@ -174,7 +174,7 @@ export default function CreateCampaignModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-125">
           <DialogHeader>
             <DialogTitle>Create Campaign</DialogTitle>
             <DialogDescription>
@@ -200,7 +200,7 @@ export default function CreateCampaignModal({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[450px] p-0">
+                <PopoverContent className="w-112.5 p-0">
                   <Command>
                     <CommandInput placeholder="Search job code..." />
                     <CommandList>

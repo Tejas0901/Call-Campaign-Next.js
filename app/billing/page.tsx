@@ -1,135 +1,259 @@
-
 "use client";
 
+import { useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import MainLayout from "@/components/layouts/MainLayout";
-import { CreditCard, DollarSign, TrendingUp, CheckCircle } from "lucide-react";
+import {
+  CreditCard,
+  FileText,
+  BarChart3,
+  Settings,
+  DollarSign,
+  AlertCircle,
+} from "lucide-react";
 
-const plans = [
-  {
-    title: "Basic Plan",
-    price: "$10",
-    period: "/month",
-    description: "Perfect for small businesses",
-    features: [
-      "Up to 5 users",
-      "Basic call analytics",
-      "500 minutes/month",
-      "Email support",
-      "Standard campaigns",
-    ],
-    popular: false,
-  },
-  {
-    title: "Professional",
-    price: "$29",
-    period: "/month",
-    description: "For growing businesses",
-    features: [
-      "Up to 20 users",
-      "Advanced analytics",
-      "2000 minutes/month",
-      "Priority support",
-      "Unlimited campaigns",
-      "CRM integration",
-    ],
-    popular: true,
-  },
-  {
-    title: "Enterprise",
-    price: "$99",
-    period: "/month",
-    description: "For large organizations",
-    features: [
-      "Unlimited users",
-      "Advanced reporting",
-      "Unlimited minutes",
-      "24/7 dedicated support",
-      "Custom integrations",
-      "White-label options",
-      "SLA guarantee",
-    ],
-    popular: false,
-  },
-];
+type TabType = "overview" | "payment" | "history" | "credits" | "preferences";
 
 export default function BillingPage() {
+  const [activeTab, setActiveTab] = useState<TabType>("overview");
+
+  const tabs: { id: TabType; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "payment", label: "Payment methods" },
+    { id: "history", label: "Billing history" },
+    { id: "credits", label: "Credit grants" },
+    { id: "preferences", label: "Preferences" },
+  ];
+
   return (
     <MainLayout>
-      <div className="p-6">
-        <PageHeader 
-          title="Billing" 
-        />
-        
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Current Plan: Professional</h2>
-          <p className="text-gray-600">Renews on January 15, 2024</p>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {plans.map((plan, index) => (
-            <div 
-              key={index}
-              className={`border rounded-lg p-6 ${plan.popular ? 'border-orange-500 ring-2 ring-orange-500/20 relative cursor-pointer hover:shadow-md transition-shadow' : 'border-gray-200 cursor-pointer hover:shadow-md transition-shadow'}`}
-              onClick={() => {
-                // Handle plan selection
-                console.log(`Selected plan: ${plan.title}`);
-                // In a real app, you would navigate to a checkout page or open a modal
-                alert(`Plan selected: ${plan.title}. In a real application, this would proceed to checkout.`);
-              }}
-            >
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-orange-500 text-white text-xs font-semibold px-4 py-1 rounded-full">
-                  MOST POPULAR
-                </div>
-              )}
-              <h3 className="text-lg font-semibold text-gray-900">{plan.title}</h3>
-              <div className="mt-4 mb-6">
-                <span className="text-3xl font-bold text-gray-900">{plan.price}</span>
-                <span className="text-gray-600">{plan.period}</span>
-                <p className="text-sm text-gray-600 mt-1">{plan.description}</p>
-              </div>
-              <ul className="space-y-3 mb-6">
-                {plan.features.map((feature, idx) => (
-                  <li key={idx} className="flex items-start">
-                    <CheckCircle className="w-5 h-5 text-green-500 mr-2 mt-0.5" />
-                    <span className="text-gray-700">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <button 
-                className={`w-full py-2 px-4 rounded-lg font-medium ${
-                  plan.popular 
-                    ? 'bg-orange-500 text-white hover:bg-orange-600' 
-                    : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+      <div className="p-6 max-w-7xl">
+        <PageHeader title="Billing" />
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200 mb-8">
+          <div className="flex gap-8">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`pb-4 px-1 font-medium text-sm transition-colors ${
+                  activeTab === tab.id
+                    ? "text-gray-900 border-b-2 border-orange-500"
+                    : "text-gray-600 hover:text-gray-900"
                 }`}
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevent triggering parent click handler
-                  // Handle plan selection
-                  console.log(`Selected plan: ${plan.title}`);
-                  // In a real app, you would navigate to a checkout page or open a modal
-                  alert(`Plan selected: ${plan.title}. In a real application, this would proceed to checkout.`);
-                }}
               >
-                {plan.popular ? 'Upgrade Plan' : 'Select Plan'}
+                {tab.label}
               </button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-        
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Payment Information</h2>
-          <div className="flex items-center gap-4">
-            <CreditCard className="w-8 h-8 text-gray-400" />
-            <div>
-              <p className="font-medium">Visa ending in 4237</p>
-              <p className="text-sm text-gray-600">Expires 12/2026</p>
+
+        {/* Content Sections */}
+        {activeTab === "overview" && (
+          <div className="space-y-8">
+            {/* Free Trial Section */}
+            <div className="bg-white rounded-lg border border-gray-200 p-8">
+              <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+                Free trial
+              </h2>
+
+              <div className="mb-8">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-gray-600">
+                    Credit remaining
+                  </span>
+                  <AlertCircle className="w-4 h-4 text-gray-400" />
+                </div>
+                <div className="text-5xl font-bold text-gray-900 mb-6">
+                  $0.00
+                </div>
+                <div className="flex gap-3">
+                  <button className="px-6 py-2 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                    Add payment details
+                  </button>
+                  <button className="px-6 py-2 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">
+                    View usage
+                  </button>
+                </div>
+              </div>
+
+              {/* Note Box */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-gray-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-gray-700">
+                  Note: This does not reflect the status of your ChatGPT
+                  account.
+                </p>
+              </div>
+            </div>
+
+            {/* Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Payment Methods Card */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex gap-3 mb-4">
+                  <CreditCard className="w-6 h-6 text-gray-700" />
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">
+                      Payment methods
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Add or change payment method
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Billing History Card */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex gap-3 mb-4">
+                  <FileText className="w-6 h-6 text-gray-700" />
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">
+                      Billing history
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      View past and current invoices
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preferences Card */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex gap-3 mb-4">
+                  <Settings className="w-6 h-6 text-gray-700" />
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">
+                      Preferences
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Manage billing information
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Usage Limits Card */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex gap-3 mb-4">
+                  <BarChart3 className="w-6 h-6 text-gray-700" />
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">
+                      Usage limits
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      Set monthly spend limits
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pricing Card */}
+              <div className="bg-white rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
+                <div className="flex gap-3 mb-4">
+                  <DollarSign className="w-6 h-6 text-gray-700" />
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">
+                      Pricing
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      View pricing and FAQs
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <button className="mt-4 text-orange-500 hover:text-orange-600 font-medium">
-            Update Payment Method
-          </button>
-        </div>
+        )}
+
+        {activeTab === "payment" && (
+          <div className="bg-white rounded-lg border border-gray-200 p-8">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+              Payment methods
+            </h2>
+            <div className="text-center py-12">
+              <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600">No payment methods added yet</p>
+              <button className="mt-4 px-6 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors">
+                Add payment method
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "history" && (
+          <div className="bg-white rounded-lg border border-gray-200 p-8">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+              Billing history
+            </h2>
+            <div className="text-center py-12">
+              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600">No billing history available</p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "credits" && (
+          <div className="bg-white rounded-lg border border-gray-200 p-8">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+              Credit grants
+            </h2>
+            <div className="text-center py-12">
+              <DollarSign className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-600">No credits available</p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "preferences" && (
+          <div className="bg-white rounded-lg border border-gray-200 p-8">
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+              Preferences
+            </h2>
+            <div className="space-y-6">
+              <div className="border-b border-gray-200 pb-6">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    defaultChecked
+                    className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                  />
+                  <span className="text-gray-900 font-medium">
+                    Email notifications for billing
+                  </span>
+                </label>
+              </div>
+              <div className="border-b border-gray-200 pb-6">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    defaultChecked
+                    className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                  />
+                  <span className="text-gray-900 font-medium">
+                    Monthly usage reports
+                  </span>
+                </label>
+              </div>
+              <div className="pb-6">
+                <label className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-gray-300 text-orange-500 focus:ring-orange-500"
+                  />
+                  <span className="text-gray-900 font-medium">
+                    Remind me when credits are low
+                  </span>
+                </label>
+              </div>
+              <button className="px-6 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors">
+                Save preferences
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </MainLayout>
   );
