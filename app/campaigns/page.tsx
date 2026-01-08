@@ -6,6 +6,16 @@ import CampaignCard from "@/components/CampaignCard";
 import CreateCampaignModal from "@/components/CreateCampaignModal";
 import { campaignData } from "@/data/campaignData";
 import { Plus, ChevronDown } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Draft = {
   id: string;
@@ -19,6 +29,8 @@ export default function Campaigns() {
   const [view, setView] = useState<"active" | "archived" | "drafts">("active");
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [draftToDelete, setDraftToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -47,9 +59,16 @@ export default function Campaigns() {
         window.localStorage.setItem("campaignDrafts", JSON.stringify(next));
       }
       setDrafts(next);
+      setShowDeleteDialog(false);
+      setDraftToDelete(null);
     } catch {
       setDrafts((prev) => prev.filter((d) => d.id !== id));
     }
+  };
+
+  const confirmDeleteDraft = (id: string) => {
+    setDraftToDelete(id);
+    setShowDeleteDialog(true);
   };
 
   return (
@@ -163,7 +182,7 @@ export default function Campaigns() {
                     </button>
                     <button
                       className="px-3 py-1.5 text-sm bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100"
-                      onClick={() => deleteDraft(d.id)}
+                      onClick={() => confirmDeleteDraft(d.id)}
                     >
                       Delete
                     </button>
@@ -199,6 +218,28 @@ export default function Campaigns() {
         }}
         onDraftSaved={(next) => setDrafts(next)}
       />
+
+      {/* Delete Draft Confirmation */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this draft? This action cannot be
+              undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => draftToDelete && deleteDraft(draftToDelete)}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Yes, Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </MainLayout>
   );
 }
