@@ -12,52 +12,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Check,
-  ChevronsUpDown,
-  UploadCloud,
-  FileText,
-  Trash2,
-  X,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-
-// Sample job codes - replace with your actual data
-const jobCodes = [
-  { value: "JC001", label: "Marketing Campaign - Email" },
-  { value: "JC002", label: "Sales Outreach - Phone" },
-  { value: "JC003", label: "Customer Support - SMS" },
-  { value: "JC004", label: "Product Launch - Multi-Channel" },
-  { value: "JC005", label: "Event Promotion - Social Media" },
-  { value: "JC006", label: "Lead Generation - Email" },
-  { value: "JC007", label: "Customer Retention - SMS" },
-  { value: "JC008", label: "Brand Awareness - Multi-Channel" },
-];
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { UploadCloud, FileText, Trash2, X } from "lucide-react";
+import { Combobox, ComboboxOption } from "@/components/ui/combobox";
+import { useJobCodes } from "@/hooks/useJobCodes";
 
 interface CreateCampaignModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  authToken?: string;
   initialValues?: {
     id?: string;
     jobCode?: string;
-    jobInfo?: string;
+    jobInfo?: string; // kept for backward-compatibility with drafts
   };
   onCreated?: (payload: {
     id?: string;
     jobCode: string;
-    jobInfo: string;
+    jobInfo: string; // returns jobRole in this field for compatibility
   }) => void;
   onDraftSaved?: (
     drafts: Array<{
@@ -72,13 +50,132 @@ interface CreateCampaignModalProps {
 export default function CreateCampaignModal({
   open,
   onOpenChange,
+  authToken,
   initialValues,
   onCreated,
   onDraftSaved,
 }: CreateCampaignModalProps) {
+  // Form fields
   const [jobCode, setJobCode] = useState("");
-  const [jobInfo, setJobInfo] = useState("");
-  const [openCombobox, setOpenCombobox] = useState(false);
+  const [jobRole, setJobRole] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [location, setLocation] = useState("");
+  const [workMode, setWorkMode] = useState<string>("");
+  const [minExp, setMinExp] = useState("");
+  const [maxExp, setMaxExp] = useState("");
+  const [minCTC, setMinCTC] = useState("");
+  const [maxCTC, setMaxCTC] = useState("");
+  const [jobDetails, setJobDetails] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+  const toPlainText = (html: string) =>
+    html
+      .replace(/<br\s*\/?>(\n)?/gi, "\n")
+      .replace(/<\/(p|div)>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+  // Read token from localStorage if not provided as prop
+  const [tokenFromStorage, setTokenFromStorage] = useState<string | undefined>(
+    undefined
+  );
+
+  useEffect(() => {
+    if (!authToken && typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("hyrex-auth-token");
+      if (stored) {
+        setTokenFromStorage(stored);
+        console.log(
+          "[CreateCampaignModal] Token read from localStorage:",
+          !!stored
+        );
+      }
+    }
+  }, [authToken, open]);
+
+  // Use prop token first, fallback to storage
+  const effectiveToken = authToken || tokenFromStorage;
+  console.log(
+    "[CreateCampaignModal] Effective authToken:",
+    !!effectiveToken,
+    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined"
+  );
+
+  const {
+    jobs,
+    loading: jobsLoading,
+    fetchJobCodes,
+  } = useJobCodes(effectiveToken);
+
+  // Convert jobs to combobox options
+  const jobCodeOptions: ComboboxOption[] = jobs.map((job) => ({
+    value: job.job_code,
+    label: `${job.job_code} - ${job.title} (${job.client_name})`,
+    job,
+  }));
+
+  // Auto-populate job role and other details when a job code is selected
+  useEffect(() => {
+    if (jobCode) {
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      if (selectedJob) {
+        // Only set jobRole if it's empty to avoid overwriting user input
+        if (!jobRole) {
+          setJobRole(selectedJob.title || "");
+        }
+        // Auto-fill other fields from API data
+        if (!companyName && selectedJob.client_name) {
+          setCompanyName(selectedJob.client_name);
+        }
+        if (!location) {
+          const parts = [
+            selectedJob.city,
+            selectedJob.state,
+            selectedJob.country,
+          ].filter(Boolean) as string[];
+          const composed =
+            parts.join(", ") ||
+            selectedJob.address ||
+            selectedJob.location ||
+            "";
+          if (composed) setLocation(composed);
+        }
+        if (!workMode && selectedJob.remote) {
+          const rv = String(selectedJob.remote).toLowerCase();
+          const mapped = rv === "yes" ? "remote" : rv === "no" ? "office" : rv;
+          if (mapped) setWorkMode(mapped);
+        }
+        if (!minExp && !maxExp && selectedJob.experience) {
+          const exp = Number(selectedJob.experience);
+          if (!Number.isNaN(exp) && exp > 0) {
+            const val = String(exp);
+            setMinExp(val);
+            setMaxExp(val);
+          }
+        }
+        if (!jobDetails && selectedJob.description) {
+          setJobDetails(toPlainText(selectedJob.description));
+        }
+      }
+    }
+  }, [jobCode, jobs, jobRole, companyName, location]);
+
+  // Fetch job codes when modal opens
+  useEffect(() => {
+    if (open && jobs.length === 0 && !jobsLoading) {
+      fetchJobCodes();
+    }
+  }, [open, jobs.length, jobsLoading]);
+
+  // Candidate import/migration and uploads state
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showMigrateDialog, setShowMigrateDialog] = useState(false);
   const [showImportManuallyDialog, setShowImportManuallyDialog] =
@@ -97,13 +194,6 @@ export default function CreateCampaignModal({
     const name = file.name.toLowerCase();
     return acceptedExt.some((ext) => name.endsWith(ext));
   };
-
-  // Prefill form when opening with initial values
-
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  if (typeof window !== "undefined") {
-    // no-op, ensure window exists for localStorage inside functions below
-  }
 
   const readDrafts = (): any[] => {
     try {
@@ -145,11 +235,11 @@ export default function CreateCampaignModal({
   };
 
   // Sync state when opening with initialValues
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (open && initialValues) {
       setJobCode(initialValues.jobCode ?? "");
-      setJobInfo(initialValues.jobInfo ?? "");
+      // Map legacy jobInfo (from drafts) to jobRole for continuity
+      setJobRole(initialValues.jobInfo ?? "");
     }
   }, [open, initialValues]);
 
@@ -162,7 +252,8 @@ export default function CreateCampaignModal({
             ? crypto.randomUUID()
             : String(Date.now())),
         jobCode,
-        jobInfo,
+        // Store jobRole into legacy jobInfo field for compatibility in drafts pages
+        jobInfo: jobRole,
         savedAt: new Date().toISOString(),
       };
       const nextDrafts = upsertDraft(draft);
@@ -173,31 +264,106 @@ export default function CreateCampaignModal({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
 
-    // Handle form submission here
-    const payload = { id: initialValues?.id, jobCode, jobInfo };
-    console.log("Campaign created:", payload);
+    // Basic validations
+    const minExpNum = Number(minExp);
+    const maxExpNum = Number(maxExp);
+    const minCTCNum = Number(minCTC);
+    const maxCTCNum = Number(maxCTC);
 
-    // If this was from a draft, remove it
-    removeDraftById(initialValues?.id);
+    if (Number.isNaN(minExpNum) || Number.isNaN(maxExpNum)) {
+      setError("Experience must be valid numbers.");
+      return;
+    }
+    if (Number.isNaN(minCTCNum) || Number.isNaN(maxCTCNum)) {
+      setError("CTC must be valid numbers.");
+      return;
+    }
+    if (minExpNum < 0 || maxExpNum < 0 || minCTCNum < 0 || maxCTCNum < 0) {
+      setError("Values cannot be negative.");
+      return;
+    }
+    if (minExpNum > maxExpNum) {
+      setError("Min experience cannot exceed max experience.");
+      return;
+    }
+    if (minCTCNum > maxCTCNum) {
+      setError("Min CTC cannot exceed max CTC.");
+      return;
+    }
 
-    // Notify parent if needed
-    onCreated?.(payload);
+    if (!API_BASE_URL || !TENANT_ID) {
+      console.error(
+        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID"
+      );
+    }
 
-    // Reset form
-    setJobCode("");
-    setJobInfo("");
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/campaigns`, {
+        method: "POST",
+        headers: {
+          "X-Tenant-ID": TENANT_ID || "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          job_role: jobRole,
+          hiring_company_name: companyName,
+          job_location: location,
+          work_mode: workMode,
+          min_experience: minExpNum,
+          max_experience: maxExpNum,
+          min_ctc: minCTCNum,
+          max_ctc: maxCTCNum,
+          negotiation_margin_percent: 10,
+          // Send textarea content directly; backend may accept string or object
+          job_details: jobDetails,
+          contact_email: email,
+          contact_phone: phone,
+        }),
+      });
 
-    // Close modal
-    onOpenChange(false);
+      const result = await response.json();
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error?.message || "Failed to create campaign");
+      }
+
+      // If this was from a draft, remove it
+      removeDraftById(initialValues?.id);
+
+      // Notify parent; keep jobInfo as jobRole for compatibility
+      onCreated?.({ id: initialValues?.id, jobCode, jobInfo: jobRole });
+
+      // Reset form
+      setJobCode("");
+      setJobRole("");
+      setCompanyName("");
+      setLocation("");
+      setWorkMode("");
+      setMinExp("");
+      setMaxExp("");
+      setMinCTC("");
+      setMaxCTC("");
+      setJobDetails("");
+      setEmail("");
+      setPhone("");
+
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error("Campaign creation failed:", err);
+      setError(err?.message || "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-125">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Create Campaign</DialogTitle>
             <DialogDescription>
@@ -205,69 +371,156 @@ export default function CreateCampaignModal({
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-6 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="jobCode">Job Code</Label>
-              <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="jobCode"
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={openCombobox}
-                    className="w-full justify-between"
-                  >
-                    {jobCode
-                      ? jobCodes.find((code) => code.value === jobCode)?.label
-                      : "Select job code..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-112.5 p-0">
-                  <Command>
-                    <CommandInput placeholder="Search job code..." />
-                    <CommandList>
-                      <CommandEmpty>No job code found.</CommandEmpty>
-                      <CommandGroup>
-                        {jobCodes.map((code) => (
-                          <CommandItem
-                            key={code.value}
-                            value={code.value}
-                            onSelect={(currentValue) => {
-                              setJobCode(
-                                currentValue === jobCode ? "" : currentValue
-                              );
-                              setOpenCombobox(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                jobCode === code.value
-                                  ? "opacity-100"
-                                  : "opacity-0"
-                              )}
-                            />
-                            {code.label}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6 mt-4 overflow-y-auto flex-1 pr-4"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="jobCode">Job Code</Label>
+                <Combobox
+                  options={jobCodeOptions}
+                  value={jobCode}
+                  onValueChange={setJobCode}
+                  placeholder="Select job code"
+                  searchPlaceholder="Search by code, title, or company..."
+                  noResultsText="No job codes found."
+                  loading={jobsLoading}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="jobInfo">Job Info</Label>
-              <Input
-                id="jobInfo"
-                type="text"
-                placeholder="Enter job information..."
-                value={jobInfo}
-                onChange={(e) => setJobInfo(e.target.value)}
-                required
-              />
+              <div className="space-y-2">
+                <Label htmlFor="jobRole">Job Role</Label>
+                <Input
+                  id="jobRole"
+                  type="text"
+                  placeholder="e.g., Senior Python Developer"
+                  value={jobRole}
+                  onChange={(e) => setJobRole(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="companyName">Company Name</Label>
+                <Input
+                  id="companyName"
+                  type="text"
+                  placeholder="e.g., Tech Corp Inc"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  type="text"
+                  placeholder="e.g., Bangalore"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Work Mode</Label>
+                <Select value={workMode} onValueChange={setWorkMode}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select work mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="office">Office</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Experience (min - max years)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Min"
+                    value={minExp}
+                    onChange={(e) => setMinExp(e.target.value)}
+                    required
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Max"
+                    value={maxExp}
+                    onChange={(e) => setMaxExp(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>CTC (in lakhs, min - max)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="Min"
+                    value={minCTC}
+                    onChange={(e) => setMinCTC(e.target.value)}
+                    required
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="Max"
+                    value={maxCTC}
+                    onChange={(e) => setMaxCTC(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="jobDetails">Job Details</Label>
+                <Textarea
+                  id="jobDetails"
+                  placeholder="Describe the role, responsibilities, required skills, etc."
+                  value={jobDetails}
+                  onChange={(e) => setJobDetails(e.target.value)}
+                  rows={4}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Contact Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="hr@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Contact Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+919876543210"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                />
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -291,7 +544,9 @@ export default function CreateCampaignModal({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
+            <div className="flex justify-end gap-3 pt-2">
               <Button
                 type="button"
                 variant="outline"
@@ -303,18 +558,33 @@ export default function CreateCampaignModal({
                 type="button"
                 variant="secondary"
                 onClick={saveDraft}
-                disabled={!jobCode && !jobInfo}
+                disabled={!jobCode && !jobRole}
               >
                 Save as Draft
               </Button>
-              <Button type="submit" disabled={!jobCode || !jobInfo}>
-                Create Campaign
+              <Button
+                type="submit"
+                disabled={
+                  submitting ||
+                  !jobRole ||
+                  !companyName ||
+                  !location ||
+                  !workMode ||
+                  !minExp ||
+                  !maxExp ||
+                  !minCTC ||
+                  !maxCTC ||
+                  !email ||
+                  !phone
+                }
+              >
+                {submitting ? "Creating..." : "Create Campaign"}
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
-
+      {/* Add candidates dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -340,6 +610,7 @@ export default function CreateCampaignModal({
         </DialogContent>
       </Dialog>
 
+      {/* Migrate candidates dialog */}
       <Dialog open={showMigrateDialog} onOpenChange={setShowMigrateDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -364,6 +635,7 @@ export default function CreateCampaignModal({
         </DialogContent>
       </Dialog>
 
+      {/* Import manually dialog */}
       <Dialog
         open={showImportManuallyDialog}
         onOpenChange={setShowImportManuallyDialog}
@@ -704,7 +976,6 @@ export default function CreateCampaignModal({
                   disabled={bulkFiles.length === 0}
                   onClick={() => {
                     if (bulkFiles.length === 0) return;
-                    // Append new files; avoid duplicates by name+size
                     setManualResumes((prev) => {
                       const existingKeys = new Set(
                         prev.map((f) => `${f.name}-${f.size}`)
