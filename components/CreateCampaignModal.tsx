@@ -85,11 +85,23 @@ export default function CreateCampaignModal({
 
   // Read token from localStorage if not provided as prop
   const [tokenFromStorage, setTokenFromStorage] = useState<string | undefined>(
-    undefined
+    () => {
+      if (typeof window !== "undefined") {
+        const stored = window.localStorage.getItem("hyrex-auth-token");
+        if (stored) {
+          console.log(
+            "[CreateCampaignModal] Token loaded from localStorage on mount:",
+            !!stored
+          );
+          return stored;
+        }
+      }
+      return undefined;
+    }
   );
 
   useEffect(() => {
-    if (!authToken && typeof window !== "undefined") {
+    if (!authToken && !tokenFromStorage && typeof window !== "undefined") {
       const stored = window.localStorage.getItem("hyrex-auth-token");
       if (stored) {
         setTokenFromStorage(stored);
@@ -99,7 +111,7 @@ export default function CreateCampaignModal({
         );
       }
     }
-  }, [authToken, open]);
+  }, [authToken, tokenFromStorage, open]);
 
   // Use prop token first, fallback to storage
   const effectiveToken = authToken || tokenFromStorage;
