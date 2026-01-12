@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent } from "react";
 import MainLayout from "@/components/layouts/MainLayout";
 import CampaignCard from "@/components/CampaignCard";
+import DraftCard from "@/components/DraftCard";
 import CreateCampaignModal from "@/components/CreateCampaignModal";
 import { campaignData } from "@/data/campaignData";
 import { Plus, ChevronDown } from "lucide-react";
@@ -286,43 +287,15 @@ export default function Campaigns() {
             <div className="text-gray-600">No drafts saved yet.</div>
           ) : (
             drafts.map((d) => (
-              <div
+              <DraftCard
                 key={d.id}
-                className="bg-white border border-gray-200 rounded-lg p-4"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-500">
-                    Saved {new Date(d.savedAt).toLocaleString()}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded hover:bg-primary-700"
-                      onClick={() => {
-                        setSelectedDraft(d);
-                        setIsModalOpen(true);
-                      }}
-                    >
-                      Continue
-                    </button>
-                    <button
-                      className="px-3 py-1.5 text-sm bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-100"
-                      onClick={() => confirmDeleteDraft(d.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-2 space-y-1">
-                  <div className="text-sm">
-                    <span className="font-medium">Job Code:</span>{" "}
-                    {d.jobCode || "-"}
-                  </div>
-                  <div className="text-sm">
-                    <span className="font-medium">Job Info:</span>{" "}
-                    {d.jobInfo || "-"}
-                  </div>
-                </div>
-              </div>
+                draft={d}
+                onContinue={(draft) => {
+                  setSelectedDraft(draft);
+                  setIsModalOpen(true);
+                }}
+                onDelete={confirmDeleteDraft}
+              />
             ))
           )}
         </div>

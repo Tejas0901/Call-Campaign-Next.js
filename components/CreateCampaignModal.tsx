@@ -556,29 +556,10 @@ export default function CreateCampaignModal({
               </Button>
               <Button
                 type="button"
-                variant="secondary"
                 onClick={saveDraft}
                 disabled={!jobCode && !jobRole}
               >
                 Save as Draft
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  submitting ||
-                  !jobRole ||
-                  !companyName ||
-                  !location ||
-                  !workMode ||
-                  !minExp ||
-                  !maxExp ||
-                  !minCTC ||
-                  !maxCTC ||
-                  !email ||
-                  !phone
-                }
-              >
-                {submitting ? "Creating..." : "Create Campaign"}
               </Button>
             </div>
           </form>
