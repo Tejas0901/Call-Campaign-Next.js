@@ -139,46 +139,53 @@ export default function CreateCampaignModal({
     if (jobCode) {
       const selectedJob = jobs.find((j) => j.job_code === jobCode);
       if (selectedJob) {
-        // Only set jobRole if it's empty to avoid overwriting user input
-        if (!jobRole) {
-          setJobRole(selectedJob.title || "");
-        }
-        // Auto-fill other fields from API data
-        if (!companyName && selectedJob.client_name) {
-          setCompanyName(selectedJob.client_name);
-        }
-        if (!location) {
-          const parts = [
-            selectedJob.city,
-            selectedJob.state,
-            selectedJob.country,
-          ].filter(Boolean) as string[];
-          const composed =
-            parts.join(", ") ||
-            selectedJob.address ||
-            selectedJob.location ||
-            "";
-          if (composed) setLocation(composed);
-        }
-        if (!workMode && selectedJob.remote) {
+        // Auto-fill all fields from API data
+        setJobRole(selectedJob.title || "");
+        setCompanyName(selectedJob.client_name || "");
+
+        const parts = [
+          selectedJob.city,
+          selectedJob.state,
+          selectedJob.country,
+        ].filter(Boolean) as string[];
+        const composed =
+          parts.join(", ") || selectedJob.address || selectedJob.location || "";
+        setLocation(composed);
+
+        if (selectedJob.remote) {
           const rv = String(selectedJob.remote).toLowerCase();
           const mapped = rv === "yes" ? "remote" : rv === "no" ? "office" : rv;
-          if (mapped) setWorkMode(mapped);
+          setWorkMode(mapped);
+        } else {
+          setWorkMode("");
         }
-        if (!minExp && !maxExp && selectedJob.experience) {
+
+        if (selectedJob.experience) {
           const exp = Number(selectedJob.experience);
           if (!Number.isNaN(exp) && exp > 0) {
             const val = String(exp);
             setMinExp(val);
             setMaxExp(val);
           }
+        } else {
+          setMinExp("");
+          setMaxExp("");
         }
-        if (!jobDetails && selectedJob.description) {
+
+        if (selectedJob.description) {
           setJobDetails(toPlainText(selectedJob.description));
+        } else {
+          setJobDetails("");
+        }
+
+        if (selectedJob.created_by?.email) {
+          setEmail(selectedJob.created_by.email);
+        } else {
+          setEmail("");
         }
       }
     }
-  }, [jobCode, jobs, jobRole, companyName, location]);
+  }, [jobCode, jobs]);
 
   // Fetch job codes when modal opens
   useEffect(() => {
@@ -189,22 +196,139 @@ export default function CreateCampaignModal({
 
   // Candidate import/migration and uploads state
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showMigrateDialog, setShowMigrateDialog] = useState(false);
   const [showImportManuallyDialog, setShowImportManuallyDialog] =
     useState(false);
+  const [showAtsDialog, setShowAtsDialog] = useState(false);
+  const [showAtsCandidatesModal, setShowAtsCandidatesModal] = useState(false);
   const [showSingleUploadDialog, setShowSingleUploadDialog] = useState(false);
   const [showBulkUploadDialog, setShowBulkUploadDialog] = useState(false);
   const [singleFile, setSingleFile] = useState<File | null>(null);
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
   const [manualResumes, setManualResumes] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState<string>("");
+  const [atsCandidates, setAtsCandidates] = useState<any[]>([]);
+  const [atsCandidatesLoading, setAtsCandidatesLoading] = useState(false);
+  const [atsCandidatesError, setAtsCandidatesError] = useState<string>("");
+  const [atsPage, setAtsPage] = useState(1);
+  const [atsPageSize, setAtsPageSize] = useState(10);
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<number>>(
+    new Set()
+  );
+  const [atsTotalCount, setAtsTotalCount] = useState(0);
   const singleInputRef = useRef<HTMLInputElement | null>(null);
   const bulkInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Get stored auth format preference
+  const getStoredAuthFormat = (): string => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("hyrex-auth-format") || "Bearer";
+    }
+    return "Bearer";
+  };
+
+  const setStoredAuthFormat = (format: string) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("hyrex-auth-format", format);
+    }
+  };
 
   const acceptedExt = [".pdf", ".doc", ".docx"];
   const isAccepted = (file: File) => {
     const name = file.name.toLowerCase();
     return acceptedExt.some((ext) => name.endsWith(ext));
+  };
+
+  // Fetch ATS candidates
+  const fetchAtsCandidates = async (
+    jobId: number,
+    page: number = 1,
+    pageSize: number = 10
+  ) => {
+    setAtsCandidatesLoading(true);
+    setAtsCandidatesError("");
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Try with stored format first (or Bearer as default)
+      let authFormat = getStoredAuthFormat();
+      if (effectiveToken) {
+        headers["Authorization"] = `${authFormat} ${effectiveToken}`;
+        console.log(`[fetchAtsCandidates] Using ${authFormat} format`);
+      }
+
+      let response = await fetch(
+        `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
+        {
+          method: "GET",
+          headers,
+        }
+      );
+
+      console.log("[fetchAtsCandidates] Response status:", response.status);
+
+      // If 401, try alternate format
+      if (response.status === 401 && effectiveToken) {
+        const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
+        console.log(
+          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`
+        );
+        headers["Authorization"] = `${alternateFormat} ${effectiveToken}`;
+        response = await fetch(
+          `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
+          {
+            method: "GET",
+            headers,
+          }
+        );
+        console.log(
+          `[fetchAtsCandidates] ${alternateFormat} attempt status:`,
+          response.status
+        );
+
+        // If successful with alternate format, remember it
+        if (response.ok) {
+          authFormat = alternateFormat;
+          setStoredAuthFormat(alternateFormat);
+          console.log(
+            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`
+          );
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[fetchAtsCandidates] Error response:", errorData);
+        throw new Error(errorData?.error || "Failed to fetch candidates");
+      }
+
+      const data = await response.json();
+      console.log(
+        "[fetchAtsCandidates] Success! Got",
+        data.results?.length || 0,
+        "candidates"
+      );
+      setAtsCandidates(data.results || data.data || []);
+      setAtsTotalCount(data.count || 0);
+    } catch (err: any) {
+      console.error("[fetchAtsCandidates] Error:", err);
+      setAtsCandidatesError(err?.message || "Failed to fetch candidates");
+      setAtsCandidates([]);
+    } finally {
+      setAtsCandidatesLoading(false);
+    }
+  };
+
+  // Get the selected job's ID for ATS
+  const getSelectedJobId = (): number | null => {
+    if (jobCode) {
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      if (selectedJob && selectedJob.id) {
+        return selectedJob.id;
+      }
+    }
+    return null;
   };
 
   const readDrafts = (): any[] => {
@@ -535,30 +659,17 @@ export default function CreateCampaignModal({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="default"
-                  className="flex-1 justify-center bg-primary-600 text-white hover:bg-primary-700"
-                  onClick={() => setShowAddDialog(true)}
-                >
-                  Add candidates
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 justify-center border-amber-300 text-amber-700 hover:bg-amber-50"
-                  onClick={() => setShowMigrateDialog(true)}
-                >
-                  Migrate
-                </Button>
-              </div>
-            </div>
-
             {error && <p className="text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="default"
+                className="bg-primary-600 text-white hover:bg-primary-700"
+                onClick={() => setShowAddDialog(true)}
+              >
+                Add candidates
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -583,46 +694,29 @@ export default function CreateCampaignModal({
           <DialogHeader>
             <DialogTitle>Add candidates</DialogTitle>
           </DialogHeader>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Button
               type="button"
               variant="outline"
-              className="flex-1 border-primary-200 text-primary-700 hover:bg-primary-50"
+              className="border-primary-200 text-primary-700 hover:bg-primary-50"
             >
               Excel import
             </Button>
             <Button
               type="button"
               variant="outline"
-              className="flex-1 border-primary-200 text-primary-700 hover:bg-primary-50"
+              className="border-primary-200 text-primary-700 hover:bg-primary-50"
               onClick={() => setShowImportManuallyDialog(true)}
             >
               Import manually
             </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Migrate candidates dialog */}
-      <Dialog open={showMigrateDialog} onOpenChange={setShowMigrateDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Migrate candidates</DialogTitle>
-          </DialogHeader>
-          <div className="flex gap-2">
             <Button
               type="button"
               variant="outline"
-              className="flex-1 border-amber-300 text-amber-800 hover:bg-amber-50"
+              className="border-primary-200 text-primary-700 hover:bg-primary-50"
+              onClick={() => setShowAtsDialog(true)}
             >
-              From existing DB
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 border-amber-300 text-amber-800 hover:bg-amber-50"
-            >
-              From Excel sheet
+              ATS
             </Button>
           </div>
         </DialogContent>
@@ -985,6 +1079,350 @@ export default function CreateCampaignModal({
                   Add all
                 </Button>
               </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ATS Dialog */}
+      <Dialog open={showAtsDialog} onOpenChange={setShowAtsDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>ATS Integration</DialogTitle>
+            <DialogDescription>
+              Connect to your Applicant Tracking System to import candidates.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Select your ATS provider to connect and import candidates.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAtsDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  const jobId = getSelectedJobId();
+                  if (!jobId) {
+                    setAtsCandidatesError("Please select a job code first");
+                    return;
+                  }
+                  setAtsPage(1); // Reset to first page
+                  setSelectedCandidates(new Set()); // Clear selection
+                  await fetchAtsCandidates(jobId, 1, atsPageSize);
+                  setShowAtsDialog(false);
+                  setShowAtsCandidatesModal(true);
+                }}
+                disabled={!jobCode}
+              >
+                Fetch Candidates
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ATS Candidates Modal */}
+      <Dialog
+        open={showAtsCandidatesModal}
+        onOpenChange={setShowAtsCandidatesModal}
+      >
+        <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-lg md:text-xl">
+              ATS Candidates
+            </DialogTitle>
+            <DialogDescription className="text-sm">
+              {atsTotalCount > 0 ? `Found ${atsTotalCount} candidates. ` : ""}
+              Select candidates to import for this campaign.
+            </DialogDescription>
+          </DialogHeader>
+
+          {atsCandidatesLoading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                <p className="text-gray-600 text-sm">Loading candidates...</p>
+              </div>
+            </div>
+          )}
+
+          {atsCandidatesError && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+              <p className="text-sm text-red-700 font-medium">Error</p>
+              <p className="text-sm text-red-600 mt-1">{atsCandidatesError}</p>
+            </div>
+          )}
+
+          {!atsCandidatesLoading &&
+            !atsCandidatesError &&
+            atsCandidates.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="text-gray-400 mb-3">
+                  <svg
+                    className="w-16 h-16"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                    />
+                  </svg>
+                </div>
+                <p className="text-gray-600 font-medium">No candidates found</p>
+                <p className="text-gray-500 text-sm mt-1">
+                  Try adjusting your filters or check back later
+                </p>
+              </div>
+            )}
+
+          {!atsCandidatesLoading && atsCandidates.length > 0 && (
+            <>
+              <div className="flex items-center justify-between px-1 pb-2 border-b">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    checked={
+                      selectedCandidates.size === atsCandidates.length &&
+                      atsCandidates.length > 0
+                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCandidates(
+                          new Set(atsCandidates.map((_, i) => i))
+                        );
+                      } else {
+                        setSelectedCandidates(new Set());
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-gray-700">
+                    {selectedCandidates.size > 0
+                      ? `${selectedCandidates.size} selected`
+                      : "Select all"}
+                  </span>
+                </div>
+                {selectedCandidates.size > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-gray-600 hover:text-gray-900"
+                    onClick={() => setSelectedCandidates(new Set())}
+                  >
+                    Clear selection
+                  </Button>
+                )}
+              </div>
+
+              <div className="overflow-auto flex-1 -mx-6 px-6">
+                <div className="min-w-[900px]">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="sticky top-0 bg-gray-50 z-10">
+                      <tr className="border-b border-gray-200">
+                        <th className="w-12 px-3 py-3 text-left">
+                          <span className="sr-only">Select</span>
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Date
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Candidate
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Mobile
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Location
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Job
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Submitted By
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {atsCandidates.map((candidate: any, idx: number) => (
+                        <tr
+                          key={idx}
+                          className={`hover:bg-gray-50 transition-colors cursor-pointer ${
+                            selectedCandidates.has(idx) ? "bg-blue-50" : ""
+                          }`}
+                          onClick={() => {
+                            const newSelected = new Set(selectedCandidates);
+                            if (newSelected.has(idx)) {
+                              newSelected.delete(idx);
+                            } else {
+                              newSelected.add(idx);
+                            }
+                            setSelectedCandidates(newSelected);
+                          }}
+                        >
+                          <td className="px-3 py-4">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                              checked={selectedCandidates.has(idx)}
+                              onChange={() => {}}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </td>
+                          <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
+                            {candidate.submission_on
+                              ? new Date(
+                                  candidate.submission_on
+                                ).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })
+                              : "—"}
+                          </td>
+                          <td className="px-3 py-4">
+                            <div className="font-medium text-gray-900">
+                              {candidate.candidate_name || "—"}
+                            </div>
+                            {candidate.candidate_email && (
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {candidate.candidate_email}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-4 text-gray-700 whitespace-nowrap">
+                            {candidate.candidate_mobile || "—"}
+                          </td>
+                          <td className="px-3 py-4 text-gray-600 text-xs">
+                            {candidate.candidate_location || "—"}
+                          </td>
+                          <td className="px-3 py-4">
+                            <div className="font-medium text-gray-900 text-xs">
+                              {candidate.job_code || "—"}
+                            </div>
+                            {candidate.job_title && (
+                              <div className="text-xs text-gray-500 mt-0.5 max-w-[200px] truncate">
+                                {candidate.job_title}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-4">
+                            <div className="text-gray-700 text-xs">
+                              {candidate.submitted_by_name || "—"}
+                            </div>
+                            {candidate.updated_by_name &&
+                              candidate.updated_by_name !==
+                                candidate.submitted_by_name && (
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  Updated: {candidate.updated_by_name}
+                                </div>
+                              )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Pagination Info */}
+              {atsTotalCount > atsPageSize && (
+                <div className="flex items-center justify-between px-1 pt-3 border-t">
+                  <p className="text-sm text-gray-600">
+                    Showing {(atsPage - 1) * atsPageSize + 1} to{" "}
+                    {Math.min(atsPage * atsPageSize, atsTotalCount)} of{" "}
+                    {atsTotalCount} candidates
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={atsPage === 1 || atsCandidatesLoading}
+                      onClick={async () => {
+                        const newPage = atsPage - 1;
+                        setAtsPage(newPage);
+                        const jobId = getSelectedJobId();
+                        if (jobId)
+                          await fetchAtsCandidates(jobId, newPage, atsPageSize);
+                      }}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        atsPage * atsPageSize >= atsTotalCount ||
+                        atsCandidatesLoading
+                      }
+                      onClick={async () => {
+                        const newPage = atsPage + 1;
+                        setAtsPage(newPage);
+                        const jobId = getSelectedJobId();
+                        if (jobId)
+                          await fetchAtsCandidates(jobId, newPage, atsPageSize);
+                      }}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="border-t pt-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="text-sm text-gray-600">
+              {selectedCandidates.size > 0 && (
+                <span className="font-medium text-primary-600">
+                  {selectedCandidates.size} candidate
+                  {selectedCandidates.size !== 1 ? "s" : ""} ready to import
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowAtsCandidatesModal(false);
+                  setSelectedCandidates(new Set());
+                }}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                disabled={selectedCandidates.size === 0}
+                onClick={() => {
+                  // TODO: Implement import functionality
+                  const selected = atsCandidates.filter((_, idx) =>
+                    selectedCandidates.has(idx)
+                  );
+                  console.log("Importing candidates:", selected);
+                  // For now, just close the modal
+                  setShowAtsCandidatesModal(false);
+                  setSelectedCandidates(new Set());
+                }}
+              >
+                Import{" "}
+                {selectedCandidates.size > 0
+                  ? `(${selectedCandidates.size})`
+                  : "Selected"}
+              </Button>
             </div>
           </div>
         </DialogContent>

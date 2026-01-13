@@ -17,6 +17,16 @@ export interface JobData {
   country?: string;
   address?: string;
   experience?: string;
+  created_by?: {
+    id: number;
+    username: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    is_active: boolean;
+    team_id: number;
+    empcode: number;
+  };
 }
 
 import { fetchJobsFromHyrex, filterJobsByCode } from "@/lib/api-integrations";

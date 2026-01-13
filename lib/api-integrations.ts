@@ -2,18 +2,32 @@
  * API integrations for external services
  */
 
-const HYREX_API_BASE = "https://api.hyrexai.com/api/v1";
+const HYREX_API_BASE = process.env.NEXT_PUBLIC_HYREX_API_BASE_URL || "https://api.hyrexai.com/api/v1";
 
 type AuthHeader = { Authorization?: string };
 
-const buildHeaders = (authToken?: string): HeadersInit => {
+// Get stored auth format preference (Bearer or Token)
+const getStoredAuthFormat = (): string => {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("hyrex-auth-format") || "Bearer";
+  }
+  return "Bearer";
+};
+
+const setStoredAuthFormat = (format: string) => {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("hyrex-auth-format", format);
+  }
+};
+
+const buildHeaders = (authToken?: string, format?: string): HeadersInit => {
   const base: HeadersInit = {
     "Content-Type": "application/json",
   };
   if (authToken) {
-    // Try Token format (Django token authentication)
-    (base as AuthHeader).Authorization = `Token ${authToken}`;
-    console.log("[API Headers] Authorization set with Token format");
+    const authFormat = format || getStoredAuthFormat();
+    (base as AuthHeader).Authorization = `${authFormat} ${authToken}`;
+    console.log(`[API Headers] Authorization set with ${authFormat} format`);
   } else {
     console.warn("[API Headers] No auth token provided");
   }
@@ -48,9 +62,10 @@ export async function fetchJobsFromHyrex(
   console.log("[fetchJobsFromHyrex] Calling with token:", !!authToken);
 
   try {
-    const headers = buildHeaders(authToken);
+    let authFormat = getStoredAuthFormat();
+    let headers = buildHeaders(authToken, authFormat);
     
-    // Try with Token format first
+    // Try with stored format first
     let response = await fetch(url, {
       method: "GET",
       headers,
@@ -58,18 +73,23 @@ export async function fetchJobsFromHyrex(
 
     console.log("[fetchJobsFromHyrex] Response status:", response.status);
 
-    // If 401 with Token format, try Bearer format
+    // If 401, try alternate format
     if (response.status === 401 && authToken) {
-      console.log("[fetchJobsFromHyrex] Got 401 with Token format, trying Bearer...");
-      const bearerHeaders: HeadersInit = {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${authToken}`,
-      };
+      const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
+      console.log(`[fetchJobsFromHyrex] Got 401 with ${authFormat}, trying ${alternateFormat}...`);
+      headers = buildHeaders(authToken, alternateFormat);
       response = await fetch(url, {
         method: "GET",
-        headers: bearerHeaders,
+        headers,
       });
-      console.log("[fetchJobsFromHyrex] Bearer attempt status:", response.status);
+      console.log(`[fetchJobsFromHyrex] ${alternateFormat} attempt status:`, response.status);
+      
+      // If successful with alternate format, remember it
+      if (response.ok) {
+        authFormat = alternateFormat;
+        setStoredAuthFormat(alternateFormat);
+        console.log(`[fetchJobsFromHyrex] Saved ${alternateFormat} as preferred format`);
+      }
     }
 
     if (!response.ok) {
@@ -104,7 +124,8 @@ export async function filterJobsByCode(
   }
 
   try {
-    const headers = buildHeaders(authToken);
+    const authFormat = getStoredAuthFormat();
+    const headers = buildHeaders(authToken, authFormat);
     
     const response = await fetch(url, {
       method: "GET",
@@ -151,9 +172,10 @@ export async function searchJobs(filters: {
   const url = `${HYREX_API_BASE}/jobs/jobview/?${params.toString()}`;
 
   try {
+    const authFormat = getStoredAuthFormat();
     const response = await fetch(url, {
       method: "GET",
-      headers: buildHeaders(filters.authToken),
+      headers: buildHeaders(filters.authToken, authFormat),
     });
 
     if (!response.ok) {
