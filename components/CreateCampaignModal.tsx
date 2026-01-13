@@ -1335,7 +1335,7 @@ export default function CreateCampaignModal({
               </div>
 
               <div className="overflow-auto flex-1 -mx-6 px-6">
-                <div className="min-w-[900px]">
+                <div className="min-w-225">
                   <table className="w-full text-sm border-collapse">
                     <thead className="sticky top-0 bg-gray-50 z-10">
                       <tr className="border-b border-gray-200">
@@ -1422,7 +1422,7 @@ export default function CreateCampaignModal({
                                 {candidate.job_code || "—"}
                               </div>
                               {candidate.job_title && (
-                                <div className="text-xs text-gray-500 mt-0.5 max-w-[200px] truncate">
+                                <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
                                   {candidate.job_title}
                                 </div>
                               )}

@@ -45,6 +45,25 @@ export function Combobox({
   loading = false,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
+  const [searchValue, setSearchValue] = React.useState("");
+
+  // Filter options based on search value - search in both value and label
+  const filteredOptions = React.useMemo(() => {
+    if (!searchValue) return options;
+
+    const lowerSearch = searchValue.toLowerCase();
+    return options.filter((option) => {
+      // Search in job code (value)
+      if (option.value.toLowerCase().includes(lowerSearch)) {
+        return true;
+      }
+      // Search in label (includes title and company name)
+      if (option.label.toLowerCase().includes(lowerSearch)) {
+        return true;
+      }
+      return false;
+    });
+  }, [options, searchValue]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -67,17 +86,22 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-100 p-0" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onValueChange={setSearchValue}
+          />
           <CommandList>
             <CommandEmpty>{noResultsText}</CommandEmpty>
             <CommandGroup>
-              {options.map((option) => (
+              {filteredOptions.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={option.value}
                   onSelect={(currentValue) => {
                     onValueChange(currentValue === value ? "" : currentValue);
+                    setSearchValue("");
                     setOpen(false);
                   }}
                   className="cursor-pointer"
