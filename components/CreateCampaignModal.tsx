@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -12,45 +12,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
-
-// Sample job codes - replace with your actual data
-const jobCodes = [
-  { value: "JC001", label: "Marketing Campaign - Email" },
-  { value: "JC002", label: "Sales Outreach - Phone" },
-  { value: "JC003", label: "Customer Support - SMS" },
-  { value: "JC004", label: "Product Launch - Multi-Channel" },
-  { value: "JC005", label: "Event Promotion - Social Media" },
-  { value: "JC006", label: "Lead Generation - Email" },
-  { value: "JC007", label: "Customer Retention - SMS" },
-  { value: "JC008", label: "Brand Awareness - Multi-Channel" },
-];
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { UploadCloud, FileText, Trash2, X } from "lucide-react";
+import { Combobox, ComboboxOption } from "@/components/ui/combobox";
+import { useJobCodes } from "@/hooks/useJobCodes";
 
 interface CreateCampaignModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  authToken?: string;
   initialValues?: {
     id?: string;
     jobCode?: string;
-    jobInfo?: string;
+    jobInfo?: string; // kept for backward-compatibility with drafts
   };
   onCreated?: (payload: {
     id?: string;
     jobCode: string;
-    jobInfo: string;
+    jobInfo: string; // returns jobRole in this field for compatibility
   }) => void;
   onDraftSaved?: (
     drafts: Array<{
@@ -65,22 +50,394 @@ interface CreateCampaignModalProps {
 export default function CreateCampaignModal({
   open,
   onOpenChange,
+  authToken,
   initialValues,
   onCreated,
   onDraftSaved,
 }: CreateCampaignModalProps) {
+  // Form fields
   const [jobCode, setJobCode] = useState("");
-  const [jobInfo, setJobInfo] = useState("");
-  const [openCombobox, setOpenCombobox] = useState(false);
+  const [jobRole, setJobRole] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [location, setLocation] = useState("");
+  const [workMode, setWorkMode] = useState<string>("");
+  const [minExp, setMinExp] = useState("");
+  const [maxExp, setMaxExp] = useState("");
+  const [minCTC, setMinCTC] = useState("");
+  const [maxCTC, setMaxCTC] = useState("");
+  const [jobDetails, setJobDetails] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>("");
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+  const toPlainText = (html: string) =>
+    html
+      .replace(/<br\s*\/?>(\n)?/gi, "\n")
+      .replace(/<\/(p|div)>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+  // Read token from localStorage if not provided as prop
+  const [tokenFromStorage, setTokenFromStorage] = useState<string | undefined>(
+    () => {
+      if (typeof window !== "undefined") {
+        const stored = window.localStorage.getItem("hyrex-auth-token");
+        if (stored) {
+          console.log(
+            "[CreateCampaignModal] Token loaded from localStorage on mount:",
+            !!stored
+          );
+          return stored;
+        }
+      }
+      return undefined;
+    }
+  );
+
+  useEffect(() => {
+    if (!authToken && !tokenFromStorage && typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("hyrex-auth-token");
+      if (stored) {
+        setTokenFromStorage(stored);
+        console.log(
+          "[CreateCampaignModal] Token read from localStorage:",
+          !!stored
+        );
+      }
+    }
+  }, [authToken, tokenFromStorage, open]);
+
+  // Use prop token first, fallback to storage
+  const effectiveToken = authToken || tokenFromStorage;
+  console.log(
+    "[CreateCampaignModal] Effective authToken:",
+    !!effectiveToken,
+    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined"
+  );
+
+  const {
+    jobs,
+    loading: jobsLoading,
+    fetchJobCodes,
+  } = useJobCodes(effectiveToken);
+
+  // Convert jobs to combobox options
+  const jobCodeOptions: ComboboxOption[] = jobs.map((job) => ({
+    value: job.job_code,
+    label: `${job.job_code} - ${job.title} (${job.client_name})`,
+    job,
+  }));
+
+  // Auto-populate job role and other details when a job code is selected
+  useEffect(() => {
+    if (jobCode) {
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      if (selectedJob) {
+        // Auto-fill all fields from API data
+        setJobRole(selectedJob.title || "");
+        setCompanyName(selectedJob.client_name || "");
+
+        const parts = [
+          selectedJob.city,
+          selectedJob.state,
+          selectedJob.country,
+        ].filter(Boolean) as string[];
+        const composed =
+          parts.join(", ") || selectedJob.address || selectedJob.location || "";
+        setLocation(composed);
+
+        if (selectedJob.remote) {
+          const rv = String(selectedJob.remote).toLowerCase();
+          const mapped = rv === "yes" ? "remote" : rv === "no" ? "office" : rv;
+          setWorkMode(mapped);
+        } else {
+          setWorkMode("");
+        }
+
+        if (selectedJob.experience) {
+          const exp = Number(selectedJob.experience);
+          if (!Number.isNaN(exp) && exp > 0) {
+            const val = String(exp);
+            setMinExp(val);
+            setMaxExp(val);
+          }
+        } else {
+          setMinExp("");
+          setMaxExp("");
+        }
+
+        if (selectedJob.description) {
+          setJobDetails(toPlainText(selectedJob.description));
+        } else {
+          setJobDetails("");
+        }
+
+        if (selectedJob.created_by?.email) {
+          setEmail(selectedJob.created_by.email);
+        } else {
+          setEmail("");
+        }
+      }
+    }
+  }, [jobCode, jobs]);
+
+  // Fetch job codes when modal opens
+  useEffect(() => {
+    if (open && jobs.length === 0 && !jobsLoading) {
+      fetchJobCodes();
+    }
+  }, [open, jobs.length, jobsLoading]);
+
+  // Candidate import/migration and uploads state
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showMigrateDialog, setShowMigrateDialog] = useState(false);
+  const [showImportManuallyDialog, setShowImportManuallyDialog] =
+    useState(false);
+  const [showAtsDialog, setShowAtsDialog] = useState(false);
+  const [showAtsCandidatesModal, setShowAtsCandidatesModal] = useState(false);
+  const [showSingleUploadDialog, setShowSingleUploadDialog] = useState(false);
+  const [showBulkUploadDialog, setShowBulkUploadDialog] = useState(false);
+  const [singleFile, setSingleFile] = useState<File | null>(null);
+  const [bulkFiles, setBulkFiles] = useState<File[]>([]);
+  const [manualResumes, setManualResumes] = useState<File[]>([]);
+  const [uploadError, setUploadError] = useState<string>("");
+  const [atsCandidates, setAtsCandidates] = useState<any[]>([]);
+  const [atsCandidatesLoading, setAtsCandidatesLoading] = useState(false);
+  const [atsCandidatesError, setAtsCandidatesError] = useState<string>("");
+  const [atsPage, setAtsPage] = useState(1);
+  const [atsPageSize, setAtsPageSize] = useState(10);
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<number>>(
+    new Set()
+  );
+  const [atsTotalCount, setAtsTotalCount] = useState(0);
+  const atsTotalCountRef = useRef(0); // Keep track of total count across renders
+  const singleInputRef = useRef<HTMLInputElement | null>(null);
+  const bulkInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Prefill form when opening with initial values
+  // Get stored auth format preference
+  const getStoredAuthFormat = (): string => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("hyrex-auth-format") || "Bearer";
+    }
+    return "Bearer";
+  };
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  if (typeof window !== "undefined") {
-    // no-op, ensure window exists for localStorage inside functions below
-  }
+  const setStoredAuthFormat = (format: string) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("hyrex-auth-format", format);
+    }
+  };
+
+  const acceptedExt = [".pdf", ".doc", ".docx"];
+  const isAccepted = (file: File) => {
+    const name = file.name.toLowerCase();
+    return acceptedExt.some((ext) => name.endsWith(ext));
+  };
+
+  // Fetch ATS candidates (with fallback to fetch-all for pagination issues)
+  const fetchAtsCandidates = async (
+    jobId: number,
+    page: number = 1,
+    pageSize: number = 10,
+    knownTotalCount?: number,
+    retryMode: boolean = false
+  ) => {
+    setAtsCandidatesLoading(true);
+    setAtsCandidatesError("");
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Try with stored format first (or Bearer as default)
+      let authFormat = getStoredAuthFormat();
+      if (effectiveToken) {
+        headers["Authorization"] = `${authFormat} ${effectiveToken}`;
+        console.log(
+          `[fetchAtsCandidates] Using ${authFormat} format on page ${page}`
+        );
+      }
+
+      // If pagination failed before, try fetching all candidates with a high page size
+      const effectivePageSize = retryMode ? 1000 : pageSize;
+      const effectivePage = retryMode ? 1 : page;
+
+      let response = await fetch(
+        `/api/candidates/submissions?job_id=${jobId}&page=${effectivePage}&page_size=${effectivePageSize}`,
+        {
+          method: "GET",
+          headers,
+        }
+      );
+
+      console.log(
+        "[fetchAtsCandidates] Response status:",
+        response.status,
+        retryMode ? "(retry mode)" : ""
+      );
+
+      // If 401, try alternate format
+      if (response.status === 401 && effectiveToken) {
+        const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
+        console.log(
+          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`
+        );
+        headers["Authorization"] = `${alternateFormat} ${effectiveToken}`;
+        response = await fetch(
+          `/api/candidates/submissions?job_id=${jobId}&page=${effectivePage}&page_size=${effectivePageSize}`,
+          {
+            method: "GET",
+            headers,
+          }
+        );
+        console.log(
+          `[fetchAtsCandidates] ${alternateFormat} attempt status:`,
+          response.status
+        );
+
+        // If successful with alternate format, remember it
+        if (response.ok) {
+          authFormat = alternateFormat;
+          setStoredAuthFormat(alternateFormat);
+          console.log(
+            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`
+          );
+        }
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("[fetchAtsCandidates] Error response:", errorData);
+
+        // If pagination failed and we haven't retried, try fetch-all mode
+        if (!retryMode && page > 1 && atsTotalCountRef.current > 0) {
+          console.log(
+            "[fetchAtsCandidates] Pagination failed, retrying with fetch-all mode..."
+          );
+          await fetchAtsCandidates(
+            jobId,
+            page,
+            pageSize,
+            knownTotalCount,
+            true
+          );
+          return;
+        }
+
+        throw new Error(errorData?.error || "Failed to fetch candidates");
+      }
+
+      const data = await response.json();
+      const resultsReceived = data.results?.length || 0;
+      console.log(
+        `[fetchAtsCandidates] Page ${effectivePage}: Got ${resultsReceived} candidates, API count: ${data.count}`,
+        retryMode ? "(fetch-all mode)" : ""
+      );
+
+      // Store total count
+      let actualTotalCount = data.count;
+      if (
+        (actualTotalCount === undefined ||
+          actualTotalCount === null ||
+          actualTotalCount === 0) &&
+        knownTotalCount
+      ) {
+        actualTotalCount = knownTotalCount;
+        console.log(
+          `[fetchAtsCandidates] API didn't return count, using known count: ${actualTotalCount}`
+        );
+      }
+
+      if (actualTotalCount > 0) {
+        atsTotalCountRef.current = actualTotalCount;
+      }
+
+      // If in retry mode (fetch-all), slice the results to the requested page
+      let candidatesToShow = data.results || data.data || [];
+      if (retryMode && effectivePageSize === 1000) {
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize;
+        console.log(
+          `[fetchAtsCandidates] Slicing results: [${start}:${end}] from ${candidatesToShow.length} total`
+        );
+        candidatesToShow = candidatesToShow.slice(start, end);
+      }
+
+      // Update candidates and total count
+      setAtsCandidates(candidatesToShow);
+      setAtsTotalCount(actualTotalCount || 0);
+
+      // Validate pagination
+      if (actualTotalCount > 0) {
+        const maxPage = Math.ceil(actualTotalCount / pageSize);
+        console.log(
+          `[fetchAtsCandidates] Total: ${actualTotalCount}, MaxPage: ${maxPage}, CurrentPage: ${page}`
+        );
+
+        // If requested page exceeds max, redirect to last page
+        if (page > maxPage && page > 1) {
+          console.log(
+            `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`
+          );
+          setAtsPage(maxPage);
+          await fetchAtsCandidates(
+            jobId,
+            maxPage,
+            pageSize,
+            actualTotalCount,
+            false
+          );
+          return;
+        }
+
+        // If we got empty results on a valid page, it might be a server issue
+        if (
+          candidatesToShow.length === 0 &&
+          page <= maxPage &&
+          page > 1 &&
+          !retryMode
+        ) {
+          console.warn(
+            `[fetchAtsCandidates] Page ${page} returned 0 results but should be valid (max: ${maxPage})`
+          );
+          // Retry with fetch-all mode to work around pagination issues
+          console.log(
+            "[fetchAtsCandidates] Attempting fetch-all mode workaround..."
+          );
+          await fetchAtsCandidates(
+            jobId,
+            page,
+            pageSize,
+            actualTotalCount,
+            true
+          );
+          return;
+        }
+      }
+    } catch (err: any) {
+      console.error("[fetchAtsCandidates] Error:", err);
+      setAtsCandidatesError(err?.message || "Failed to fetch candidates");
+      setAtsCandidates([]);
+    } finally {
+      setAtsCandidatesLoading(false);
+    }
+  };
+
+  // Get the selected job's ID for ATS
+  const getSelectedJobId = (): number | null => {
+    if (jobCode) {
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      if (selectedJob && selectedJob.id) {
+        return selectedJob.id;
+      }
+    }
+    return null;
+  };
 
   const readDrafts = (): any[] => {
     try {
@@ -122,11 +479,11 @@ export default function CreateCampaignModal({
   };
 
   // Sync state when opening with initialValues
-  // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (open && initialValues) {
       setJobCode(initialValues.jobCode ?? "");
-      setJobInfo(initialValues.jobInfo ?? "");
+      // Map legacy jobInfo (from drafts) to jobRole for continuity
+      setJobRole(initialValues.jobInfo ?? "");
     }
   }, [open, initialValues]);
 
@@ -139,7 +496,8 @@ export default function CreateCampaignModal({
             ? crypto.randomUUID()
             : String(Date.now())),
         jobCode,
-        jobInfo,
+        // Store jobRole into legacy jobInfo field for compatibility in drafts pages
+        jobInfo: jobRole,
         savedAt: new Date().toISOString(),
       };
       const nextDrafts = upsertDraft(draft);
@@ -150,31 +508,106 @@ export default function CreateCampaignModal({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
 
-    // Handle form submission here
-    const payload = { id: initialValues?.id, jobCode, jobInfo };
-    console.log("Campaign created:", payload);
+    // Basic validations
+    const minExpNum = Number(minExp);
+    const maxExpNum = Number(maxExp);
+    const minCTCNum = Number(minCTC);
+    const maxCTCNum = Number(maxCTC);
 
-    // If this was from a draft, remove it
-    removeDraftById(initialValues?.id);
+    if (Number.isNaN(minExpNum) || Number.isNaN(maxExpNum)) {
+      setError("Experience must be valid numbers.");
+      return;
+    }
+    if (Number.isNaN(minCTCNum) || Number.isNaN(maxCTCNum)) {
+      setError("CTC must be valid numbers.");
+      return;
+    }
+    if (minExpNum < 0 || maxExpNum < 0 || minCTCNum < 0 || maxCTCNum < 0) {
+      setError("Values cannot be negative.");
+      return;
+    }
+    if (minExpNum > maxExpNum) {
+      setError("Min experience cannot exceed max experience.");
+      return;
+    }
+    if (minCTCNum > maxCTCNum) {
+      setError("Min CTC cannot exceed max CTC.");
+      return;
+    }
 
-    // Notify parent if needed
-    onCreated?.(payload);
+    if (!API_BASE_URL || !TENANT_ID) {
+      console.error(
+        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID"
+      );
+    }
 
-    // Reset form
-    setJobCode("");
-    setJobInfo("");
+    setSubmitting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/campaigns`, {
+        method: "POST",
+        headers: {
+          "X-Tenant-ID": TENANT_ID || "",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          job_role: jobRole,
+          hiring_company_name: companyName,
+          job_location: location,
+          work_mode: workMode,
+          min_experience: minExpNum,
+          max_experience: maxExpNum,
+          min_ctc: minCTCNum,
+          max_ctc: maxCTCNum,
+          negotiation_margin_percent: 10,
+          // Send textarea content directly; backend may accept string or object
+          job_details: jobDetails,
+          contact_email: email,
+          contact_phone: phone,
+        }),
+      });
 
-    // Close modal
-    onOpenChange(false);
+      const result = await response.json();
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error?.message || "Failed to create campaign");
+      }
+
+      // If this was from a draft, remove it
+      removeDraftById(initialValues?.id);
+
+      // Notify parent; keep jobInfo as jobRole for compatibility
+      onCreated?.({ id: initialValues?.id, jobCode, jobInfo: jobRole });
+
+      // Reset form
+      setJobCode("");
+      setJobRole("");
+      setCompanyName("");
+      setLocation("");
+      setWorkMode("");
+      setMinExp("");
+      setMaxExp("");
+      setMinCTC("");
+      setMaxCTC("");
+      setJobDetails("");
+      setEmail("");
+      setPhone("");
+
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error("Campaign creation failed:", err);
+      setError(err?.message || "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Create Campaign</DialogTitle>
             <DialogDescription>
@@ -182,93 +615,169 @@ export default function CreateCampaignModal({
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-6 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="jobCode">Job Code</Label>
-              <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
-                <PopoverTrigger asChild>
-                  <Button
-                    id="jobCode"
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={openCombobox}
-                    className="w-full justify-between"
-                  >
-                    {jobCode
-                      ? jobCodes.find((code) => code.value === jobCode)?.label
-                      : "Select job code..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[450px] p-0">
-                  <Command>
-                    <CommandInput placeholder="Search job code..." />
-                    <CommandList>
-                      <CommandEmpty>No job code found.</CommandEmpty>
-                      <CommandGroup>
-                        {jobCodes.map((code) => (
-                          <CommandItem
-                            key={code.value}
-                            value={code.value}
-                            onSelect={(currentValue) => {
-                              setJobCode(
-                                currentValue === jobCode ? "" : currentValue
-                              );
-                              setOpenCombobox(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                jobCode === code.value
-                                  ? "opacity-100"
-                                  : "opacity-0"
-                              )}
-                            />
-                            {code.label}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-6 mt-4 overflow-y-auto flex-1 pr-4"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="jobCode">Job Code</Label>
+                <Combobox
+                  options={jobCodeOptions}
+                  value={jobCode}
+                  onValueChange={setJobCode}
+                  placeholder="Select job code"
+                  searchPlaceholder="Search by code, title, or company..."
+                  noResultsText="No job codes found."
+                  loading={jobsLoading}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="jobInfo">Job Info</Label>
-              <Input
-                id="jobInfo"
-                type="text"
-                placeholder="Enter job information..."
-                value={jobInfo}
-                onChange={(e) => setJobInfo(e.target.value)}
-                required
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="jobRole">Job Role</Label>
+                <Input
+                  id="jobRole"
+                  type="text"
+                  placeholder="e.g., Senior Python Developer"
+                  value={jobRole}
+                  onChange={(e) => setJobRole(e.target.value)}
+                  required
+                />
+              </div>
 
-            <div className="space-y-2">
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="default"
-                  className="flex-1 justify-center bg-primary-600 text-white hover:bg-primary-700"
-                  onClick={() => setShowAddDialog(true)}
-                >
-                  Add candidates
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 justify-center border-amber-300 text-amber-700 hover:bg-amber-50"
-                  onClick={() => setShowMigrateDialog(true)}
-                >
-                  Migrate
-                </Button>
+              <div className="space-y-2">
+                <Label htmlFor="companyName">Company Name</Label>
+                <Input
+                  id="companyName"
+                  type="text"
+                  placeholder="e.g., Tech Corp Inc"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  type="text"
+                  placeholder="e.g., Bangalore"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Work Mode</Label>
+                <Select value={workMode} onValueChange={setWorkMode}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select work mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="office">Office</SelectItem>
+                    <SelectItem value="remote">Remote</SelectItem>
+                    <SelectItem value="hybrid">Hybrid</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Experience (min - max years)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Min"
+                    value={minExp}
+                    onChange={(e) => setMinExp(e.target.value)}
+                    required
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="Max"
+                    value={maxExp}
+                    onChange={(e) => setMaxExp(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>CTC (in lakhs, min - max)</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="Min"
+                    value={minCTC}
+                    onChange={(e) => setMinCTC(e.target.value)}
+                    required
+                  />
+                  <Input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    placeholder="Max"
+                    value={maxCTC}
+                    onChange={(e) => setMaxCTC(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="jobDetails">Job Details</Label>
+                <Textarea
+                  id="jobDetails"
+                  placeholder="Describe the role, responsibilities, required skills, etc."
+                  value={jobDetails}
+                  onChange={(e) => setJobDetails(e.target.value)}
+                  rows={4}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Contact Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="hr@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Contact Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+919876543210"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                />
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
+            {error && <p className="text-sm text-red-600">{error}</p>}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                type="button"
+                variant="default"
+                className="bg-primary-600 text-white hover:bg-primary-700"
+                onClick={() => setShowAddDialog(true)}
+              >
+                Add candidates
+              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -278,64 +787,770 @@ export default function CreateCampaignModal({
               </Button>
               <Button
                 type="button"
-                variant="secondary"
                 onClick={saveDraft}
-                disabled={!jobCode && !jobInfo}
+                disabled={!jobCode && !jobRole}
               >
                 Save as Draft
-              </Button>
-              <Button type="submit" disabled={!jobCode || !jobInfo}>
-                Create Campaign
               </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
-
+      {/* Add candidates dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add candidates</DialogTitle>
           </DialogHeader>
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2">
             <Button
               type="button"
               variant="outline"
-              className="flex-1 border-primary-200 text-primary-700 hover:bg-primary-50"
+              className="border-primary-200 text-primary-700 hover:bg-primary-50"
             >
               Excel import
             </Button>
             <Button
               type="button"
               variant="outline"
-              className="flex-1 border-primary-200 text-primary-700 hover:bg-primary-50"
+              className="border-primary-200 text-primary-700 hover:bg-primary-50"
+              onClick={() => setShowImportManuallyDialog(true)}
             >
               Import manually
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-primary-200 text-primary-700 hover:bg-primary-50"
+              onClick={() => setShowAtsDialog(true)}
+            >
+              ATS
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showMigrateDialog} onOpenChange={setShowMigrateDialog}>
+      {/* Import manually dialog */}
+      <Dialog
+        open={showImportManuallyDialog}
+        onOpenChange={setShowImportManuallyDialog}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Migrate candidates</DialogTitle>
+            <DialogTitle>Import manually</DialogTitle>
+            <DialogDescription>
+              Choose how you want to upload resumes for this campaign.
+            </DialogDescription>
           </DialogHeader>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 border-amber-300 text-amber-800 hover:bg-amber-50"
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-between border-gray-200 text-gray-800 hover:bg-gray-50"
+                onClick={() => {
+                  setUploadError("");
+                  setSingleFile(null);
+                  setShowSingleUploadDialog(true);
+                }}
+              >
+                <span>File upload</span>
+                <span className="text-xs text-gray-500">Single resume</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-between border-gray-200 text-gray-800 hover:bg-gray-50"
+                onClick={() => {
+                  setUploadError("");
+                  setBulkFiles([]);
+                  setShowBulkUploadDialog(true);
+                }}
+              >
+                <span>Bulk upload</span>
+                <span className="text-xs text-gray-500">Up to 50 resumes</span>
+              </Button>
+            </div>
+
+            <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    Selected resumes
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {manualResumes.length} added in this session
+                  </p>
+                </div>
+                {manualResumes.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-8 px-2 text-red-600 hover:text-red-700"
+                    onClick={() => setManualResumes([])}
+                  >
+                    Clear all
+                  </Button>
+                )}
+              </div>
+              {manualResumes.length > 0 && (
+                <ul className="mt-2 max-h-40 overflow-auto space-y-1 text-xs text-gray-700">
+                  {manualResumes.map((f, i) => (
+                    <li
+                      key={`${f.name}-${i}`}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="truncate mr-2">{f.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-6 px-1 text-gray-500 hover:text-gray-700"
+                        onClick={() =>
+                          setManualResumes((prev) =>
+                            prev.filter((_, idx) => idx !== i)
+                          )
+                        }
+                      >
+                        Remove
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Single Upload Dialog */}
+      <Dialog
+        open={showSingleUploadDialog}
+        onOpenChange={setShowSingleUploadDialog}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload a single resume</DialogTitle>
+            <DialogDescription>Accepted: .pdf, .doc, .docx</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <input
+              ref={singleInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(e) => {
+                setUploadError("");
+                const f = e.target.files?.[0] ?? null;
+                if (f && !isAccepted(f)) {
+                  setUploadError("Only .pdf, .doc, .docx are allowed.");
+                  setSingleFile(null);
+                  return;
+                }
+                setSingleFile(f);
+              }}
+            />
+
+            <div
+              className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 transition-colors p-6 text-center cursor-pointer"
+              onClick={() => singleInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setUploadError("");
+                const file = e.dataTransfer.files?.[0];
+                if (!file) return;
+                if (!isAccepted(file)) {
+                  setUploadError("Only .pdf, .doc, .docx are allowed.");
+                  return;
+                }
+                setSingleFile(file);
+              }}
+              role="button"
+              tabIndex={0}
             >
-              From existing DB
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1 border-amber-300 text-amber-800 hover:bg-amber-50"
+              <div className="flex flex-col items-center gap-2">
+                <UploadCloud className="h-8 w-8 text-gray-500" />
+                <p className="text-sm text-gray-800">
+                  <span className="font-medium">Click to upload</span> or drag &
+                  drop
+                </p>
+                <p className="text-xs text-gray-500">PDF, DOC, DOCX</p>
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => singleInputRef.current?.click()}
+                  >
+                    Choose file
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {singleFile && (
+              <div className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="h-4 w-4 text-gray-500" />
+                  <span className="truncate text-sm text-gray-800">
+                    {singleFile.name}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 px-2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setSingleFile(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {uploadError && (
+              <p className="text-sm text-red-600">{uploadError}</p>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowSingleUploadDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!singleFile}
+                onClick={() => {
+                  if (!singleFile) return;
+                  setManualResumes((prev) => [singleFile, ...prev]);
+                  setSingleFile(null);
+                  setShowSingleUploadDialog(false);
+                }}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Upload Dialog */}
+      <Dialog
+        open={showBulkUploadDialog}
+        onOpenChange={setShowBulkUploadDialog}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Bulk upload resumes</DialogTitle>
+            <DialogDescription>Upload up to 50 files</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <input
+              ref={bulkInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={(e) => {
+                setUploadError("");
+                const files = Array.from(e.target.files ?? []).filter(
+                  isAccepted
+                );
+                if (files.length > 50) {
+                  setUploadError("You can upload a maximum of 50 files.");
+                }
+                setBulkFiles(files.slice(0, 50));
+              }}
+            />
+
+            <div
+              className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 transition-colors p-6 text-center cursor-pointer"
+              onClick={() => bulkInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setUploadError("");
+                let files = Array.from(e.dataTransfer.files ?? []).filter(
+                  isAccepted
+                );
+                if (files.length === 0) return;
+                const combined = [...bulkFiles, ...files];
+                if (combined.length > 50) {
+                  setUploadError("You can upload a maximum of 50 files.");
+                }
+                setBulkFiles(combined.slice(0, 50));
+              }}
+              role="button"
+              tabIndex={0}
             >
-              From Excel sheet
-            </Button>
+              <div className="flex flex-col items-center gap-2">
+                <UploadCloud className="h-8 w-8 text-gray-500" />
+                <p className="text-sm text-gray-800">
+                  <span className="font-medium">Click to upload</span> or drag &
+                  drop
+                </p>
+                <p className="text-xs text-gray-500">
+                  PDF, DOC, DOCX • Up to 50 files
+                </p>
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => bulkInputRef.current?.click()}
+                  >
+                    Choose files
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-sm text-gray-700">
+              Selected: <span className="font-medium">{bulkFiles.length}</span>
+            </div>
+            {uploadError && (
+              <p className="text-sm text-red-600">{uploadError}</p>
+            )}
+            {bulkFiles.length > 0 && (
+              <ul className="max-h-48 overflow-auto space-y-1 text-xs text-gray-700 border border-gray-200 rounded p-2 bg-white">
+                {bulkFiles.map((f, i) => (
+                  <li
+                    key={`${f.name}-${i}`}
+                    className="flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-3.5 w-3.5 text-gray-500" />
+                      <span className="truncate">{f.name}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-6 px-1 text-gray-500 hover:text-gray-700"
+                      onClick={() =>
+                        setBulkFiles((prev) =>
+                          prev.filter((_, idx) => idx !== i)
+                        )
+                      }
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex justify-between items-center pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-gray-600"
+                onClick={() => setBulkFiles([])}
+                disabled={bulkFiles.length === 0}
+              >
+                Clear
+              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowBulkUploadDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={bulkFiles.length === 0}
+                  onClick={() => {
+                    if (bulkFiles.length === 0) return;
+                    setManualResumes((prev) => {
+                      const existingKeys = new Set(
+                        prev.map((f) => `${f.name}-${f.size}`)
+                      );
+                      const toAdd = bulkFiles.filter(
+                        (f) => !existingKeys.has(`${f.name}-${f.size}`)
+                      );
+                      return [...toAdd, ...prev];
+                    });
+                    setBulkFiles([]);
+                    setShowBulkUploadDialog(false);
+                  }}
+                >
+                  Add all
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ATS Dialog */}
+      <Dialog open={showAtsDialog} onOpenChange={setShowAtsDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>ATS Integration</DialogTitle>
+            <DialogDescription>
+              Connect to your Applicant Tracking System to import candidates.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Select your ATS provider to connect and import candidates.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAtsDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={async () => {
+                  const jobId = getSelectedJobId();
+                  if (!jobId) {
+                    setAtsCandidatesError("Please select a job code first");
+                    return;
+                  }
+                  setAtsPage(1); // Reset to first page
+                  setSelectedCandidates(new Set()); // Clear selection
+                  await fetchAtsCandidates(jobId, 1, atsPageSize);
+                  setShowAtsDialog(false);
+                  setShowAtsCandidatesModal(true);
+                }}
+                disabled={!jobCode}
+              >
+                Fetch Candidates
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ATS Candidates Modal */}
+      <Dialog
+        open={showAtsCandidatesModal}
+        onOpenChange={setShowAtsCandidatesModal}
+      >
+        <DialogContent className="max-w-[95vw] w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-lg md:text-xl">
+              ATS Candidates
+            </DialogTitle>
+            <DialogDescription className="text-sm">
+              {atsTotalCount > 0 ? `Found ${atsTotalCount} candidates. ` : ""}
+              Select candidates to import for this campaign.
+            </DialogDescription>
+          </DialogHeader>
+
+          {atsCandidatesLoading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                <p className="text-gray-600 text-sm">Loading candidates...</p>
+              </div>
+            </div>
+          )}
+
+          {atsCandidatesError && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+              <p className="text-sm text-red-700 font-medium">Error</p>
+              <p className="text-sm text-red-600 mt-1">{atsCandidatesError}</p>
+            </div>
+          )}
+
+          {!atsCandidatesLoading &&
+            !atsCandidatesError &&
+            atsCandidates.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="text-gray-400 mb-3">
+                  <svg
+                    className="w-16 h-16"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                    />
+                  </svg>
+                </div>
+                <p className="text-gray-600 font-medium">No candidates found</p>
+                <p className="text-gray-500 text-sm mt-1">
+                  Try adjusting your filters or check back later
+                </p>
+              </div>
+            )}
+
+          {!atsCandidatesLoading && atsCandidates.length > 0 && (
+            <>
+              <div className="flex items-center justify-between px-1 pb-2 border-b">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    checked={
+                      selectedCandidates.size === atsCandidates.length &&
+                      atsCandidates.length > 0
+                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCandidates(
+                          new Set(atsCandidates.map((_, i) => i))
+                        );
+                      } else {
+                        setSelectedCandidates(new Set());
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-gray-700">
+                    {selectedCandidates.size > 0
+                      ? `${selectedCandidates.size} selected`
+                      : "Select all"}
+                  </span>
+                </div>
+                {selectedCandidates.size > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-gray-600 hover:text-gray-900"
+                    onClick={() => setSelectedCandidates(new Set())}
+                  >
+                    Clear selection
+                  </Button>
+                )}
+              </div>
+
+              <div className="overflow-auto flex-1 -mx-6 px-6">
+                <div className="min-w-225">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="sticky top-0 bg-gray-50 z-10">
+                      <tr className="border-b border-gray-200">
+                        <th className="w-12 px-3 py-3 text-left">
+                          <span className="sr-only">Select</span>
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Date
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Candidate
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Mobile
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Location
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Job
+                        </th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                          Submitted By
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {atsCandidates
+                        .slice(0, atsPageSize)
+                        .map((candidate: any, idx: number) => (
+                          <tr
+                            key={idx}
+                            className={`hover:bg-gray-50 transition-colors cursor-pointer ${
+                              selectedCandidates.has(idx) ? "bg-blue-50" : ""
+                            }`}
+                            onClick={() => {
+                              const newSelected = new Set(selectedCandidates);
+                              if (newSelected.has(idx)) {
+                                newSelected.delete(idx);
+                              } else {
+                                newSelected.add(idx);
+                              }
+                              setSelectedCandidates(newSelected);
+                            }}
+                          >
+                            <td className="px-3 py-4">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                checked={selectedCandidates.has(idx)}
+                                onChange={() => {}}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </td>
+                            <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
+                              {candidate.submission_on
+                                ? new Date(
+                                    candidate.submission_on
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })
+                                : "—"}
+                            </td>
+                            <td className="px-3 py-4">
+                              <div className="font-medium text-gray-900">
+                                {candidate.candidate_name || "—"}
+                              </div>
+                              {candidate.candidate_email && (
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {candidate.candidate_email}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-4 text-gray-700 whitespace-nowrap">
+                              {candidate.candidate_mobile || "—"}
+                            </td>
+                            <td className="px-3 py-4 text-gray-600 text-xs">
+                              {candidate.candidate_location || "—"}
+                            </td>
+                            <td className="px-3 py-4">
+                              <div className="font-medium text-gray-900 text-xs">
+                                {candidate.job_code || "—"}
+                              </div>
+                              {candidate.job_title && (
+                                <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
+                                  {candidate.job_title}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-4">
+                              <div className="text-gray-700 text-xs">
+                                {candidate.submitted_by_name || "—"}
+                              </div>
+                              {candidate.updated_by_name &&
+                                candidate.updated_by_name !==
+                                  candidate.submitted_by_name && (
+                                  <div className="text-xs text-gray-500 mt-0.5">
+                                    Updated: {candidate.updated_by_name}
+                                  </div>
+                                )}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Pagination Info */}
+              {atsTotalCount > 0 && (
+                <div className="flex items-center justify-between px-1 pt-3 border-t">
+                  <p className="text-sm text-gray-600">
+                    Showing{" "}
+                    {Math.min((atsPage - 1) * atsPageSize + 1, atsTotalCount)}{" "}
+                    to {Math.min(atsPage * atsPageSize, atsTotalCount)} of{" "}
+                    {atsTotalCount} candidate{atsTotalCount !== 1 ? "s" : ""}
+                  </p>
+                  {atsTotalCount > atsPageSize && (
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={atsPage === 1 || atsCandidatesLoading}
+                        onClick={async () => {
+                          const newPage = atsPage - 1;
+                          setAtsPage(newPage);
+                          setSelectedCandidates(new Set()); // Clear selection on page change
+                          const jobId = getSelectedJobId();
+                          if (jobId)
+                            await fetchAtsCandidates(
+                              jobId,
+                              newPage,
+                              atsPageSize
+                            );
+                        }}
+                      >
+                        Previous
+                      </Button>
+                      <span className="flex items-center px-3 text-sm text-gray-700">
+                        Page {atsPage} of{" "}
+                        {Math.ceil(atsTotalCount / atsPageSize)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          atsPage >= Math.ceil(atsTotalCount / atsPageSize) ||
+                          atsCandidatesLoading
+                        }
+                        onClick={async () => {
+                          const newPage = atsPage + 1;
+                          setAtsPage(newPage);
+                          setSelectedCandidates(new Set()); // Clear selection on page change
+                          const jobId = getSelectedJobId();
+                          if (jobId)
+                            await fetchAtsCandidates(
+                              jobId,
+                              newPage,
+                              atsPageSize
+                            );
+                        }}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="border-t pt-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="text-sm text-gray-600">
+              {selectedCandidates.size > 0 && (
+                <span className="font-medium text-primary-600">
+                  {selectedCandidates.size} candidate
+                  {selectedCandidates.size !== 1 ? "s" : ""} ready to import
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowAtsCandidatesModal(false);
+                  setSelectedCandidates(new Set());
+                }}
+              >
+                Close
+              </Button>
+              <Button
+                type="button"
+                disabled={selectedCandidates.size === 0}
+                onClick={() => {
+                  // TODO: Implement import functionality
+                  const selected = atsCandidates.filter((_, idx) =>
+                    selectedCandidates.has(idx)
+                  );
+                  console.log("Importing candidates:", selected);
+                  // For now, just close the modal
+                  setShowAtsCandidatesModal(false);
+                  setSelectedCandidates(new Set());
+                }}
+              >
+                Import{" "}
+                {selectedCandidates.size > 0
+                  ? `(${selectedCandidates.size})`
+                  : "Selected"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

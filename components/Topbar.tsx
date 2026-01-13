@@ -1,10 +1,18 @@
-"use client"
+"use client";
 
-import { Search, Bell, HelpCircle, Menu, User, Settings, LogOut } from "lucide-react"
-import { useState, useRef, useEffect } from "react"
-import { useAuth } from '@/context/auth-context'
-import { useRouter } from 'next/navigation'
-import LogoutButton from "./LogoutButton"
+import {
+  Search,
+  Bell,
+  HelpCircle,
+  Menu,
+  User,
+  Settings,
+  LogOut,
+} from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { useAuth } from "@/context/auth-context";
+import { useRouter } from "next/navigation";
+import LogoutButton from "./LogoutButton";
 
 export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -14,20 +22,23 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
         setDropdownOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
 
   const handleDropdownLogout = () => {
     logout();
-    router.push('/auth/login');
+    router.push("/auth/login");
     router.refresh();
     setDropdownOpen(false); // Close dropdown after logout
   };
@@ -36,7 +47,10 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 flex-1">
-          <button onClick={onMenuClick} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg">
+          <button
+            onClick={onMenuClick}
+            className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+          >
             <Menu className="w-5 h-5 text-gray-600" />
           </button>
 
@@ -66,23 +80,29 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
             <HelpCircle className="w-5 h-5 text-gray-600" />
           </button>
           <div className="relative" ref={dropdownRef}>
-            <button 
-              className="w-9 h-9 bg-gradient-to-br from-orange-400 to-pink-500 rounded-full flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+            <button
+              className="w-9 h-9 bg-linear-to-br from-orange-400 to-pink-500 rounded-full flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
               onClick={() => setDropdownOpen(!dropdownOpen)}
             >
               <span className="text-white text-sm font-semibold">JD</span>
             </button>
             {dropdownOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50 border border-gray-200">
-                <a href="/profile" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                <a
+                  href="/profile"
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
                   <User className="w-4 h-4" />
                   Profile
                 </a>
-                <a href="/settings" className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                <a
+                  href="/settings"
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
                   <Settings className="w-4 h-4" />
                   Settings
                 </a>
-                <button 
+                <button
                   className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   onClick={handleDropdownLogout}
                 >
@@ -95,5 +115,5 @@ export default function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         </div>
       </div>
     </header>
-  )
+  );
 }

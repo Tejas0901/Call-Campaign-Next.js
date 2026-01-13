@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   BarChart3,
@@ -16,13 +16,13 @@ import {
   Database,
   FileText,
   CreditCard,
-} from "lucide-react"
+} from "lucide-react";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
   { icon: Megaphone, label: "Campaigns", href: "/campaigns" },
-  { icon: Radio, label: "Broadcasts", href: "#" },
+  { icon: FileText, label: "Templates", href: "/templates" },
   { icon: MessageSquare, label: "Transactional", href: "#" },
   { icon: ClipboardList, label: "Deliveries & Drafts", href: "#" },
 ];
@@ -33,24 +33,24 @@ const secondaryMenuItems = [
   { icon: Target, label: "Segments", href: "#" },
   { icon: ClipboardList, label: "Activity Logs", href: "#" },
   { icon: Database, label: "Data Integrations", href: "#" },
-]
+];
 
 const billingMenuItems = [
   { icon: CreditCard, label: "Billing", href: "/billing" },
+  { icon: CreditCard, label: "Pricing", href: "/pricing" },
   { icon: BarChart3, label: "Usage", href: "/usage" },
 ];
 
-
-
 export default function Sidebar({ isOpen }: { isOpen: boolean }) {
-  const pathname = usePathname()
+  const pathname = usePathname();
 
-  const isActive = (href: string) => pathname === href
+  const isActive = (href: string) => pathname === href;
 
   return (
     <aside
-      className={`${isOpen ? "w-64" : "w-0"
-        } bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden`}
+      className={`${
+        isOpen ? "w-64" : "w-0"
+      } bg-white border-r border-gray-200 transition-all duration-300 overflow-hidden`}
     >
       <div className="h-full flex flex-col">
         <div className="px-6 py-5 border-b border-gray-200">
@@ -70,10 +70,11 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive(item.href)
+                  className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive(item.href)
                       ? "bg-gray-100 text-gray-900"
                       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
+                  }`}
                 >
                   <Icon className="w-5 h-5" />
                   {item.label}
@@ -95,10 +96,11 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
                   <Link
                     key={item.label}
                     href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${isActive(item.href)
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      isActive(item.href)
                         ? "bg-gray-100 text-gray-900"
                         : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                      }`}
+                    }`}
                   >
                     <Icon className="w-5 h-5" />
                     {item.label}
@@ -134,7 +136,6 @@ export default function Sidebar({ isOpen }: { isOpen: boolean }) {
             </nav>
           </div> */}
         </div>
-
       </div>
     </aside>
   );
