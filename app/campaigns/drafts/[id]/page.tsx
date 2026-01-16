@@ -133,9 +133,9 @@ export default function DraftDetailPage() {
   if (loading) {
     return (
       <div className="flex h-screen bg-gray-50">
-        <Sidebar isOpen={sidebarOpen} onToggle={setSidebarOpen} />
+        <Sidebar isOpen={sidebarOpen} />
         <div className="flex-1 flex flex-col">
-          <Topbar onSidebarToggle={() => setSidebarOpen(!sidebarOpen)} />
+          <Topbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
           <main className="flex-1 overflow-auto p-8">
             <div className="text-gray-600">Loading draft...</div>
           </main>
@@ -147,9 +147,9 @@ export default function DraftDetailPage() {
   if (!draft) {
     return (
       <div className="flex h-screen bg-gray-50">
-        <Sidebar isOpen={sidebarOpen} onToggle={setSidebarOpen} />
+        <Sidebar isOpen={sidebarOpen} />
         <div className="flex-1 flex flex-col">
-          <Topbar onSidebarToggle={() => setSidebarOpen(!sidebarOpen)} />
+          <Topbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
           <main className="flex-1 overflow-auto p-8">
             <div className="text-center">
               <p className="text-gray-600 mb-4">Draft not found</p>
@@ -169,9 +169,9 @@ export default function DraftDetailPage() {
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar isOpen={sidebarOpen} onToggle={setSidebarOpen} />
+      <Sidebar isOpen={sidebarOpen} />
       <div className="flex-1 flex flex-col">
-        <Topbar onSidebarToggle={() => setSidebarOpen(!sidebarOpen)} />
+        <Topbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
         <main className="flex-1 overflow-auto">
           <div className="p-8">
             {/* Header */}
