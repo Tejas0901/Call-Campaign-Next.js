@@ -31,6 +31,7 @@ interface CreateCampaignModalProps {
     id?: string;
     jobCode?: string;
     jobInfo?: string; // kept for backward-compatibility with drafts
+    jobId?: number; // Added for ATS integration
   };
   onCreated?: (payload: {
     id?: string;
@@ -42,6 +43,7 @@ interface CreateCampaignModalProps {
       id: string;
       jobCode: string;
       jobInfo: string;
+      jobId?: number; // Added for ATS integration
       savedAt: string;
     }>
   ) => void;
@@ -395,6 +397,12 @@ export default function CreateCampaignModal({
 
   // Get the selected job's ID for ATS
   const getSelectedJobId = (): number | null => {
+    // If jobId is directly provided in initialValues, use it (for drafts)
+    if (initialValues?.jobId) {
+      return initialValues.jobId;
+    }
+
+    // Otherwise, look it up from the jobs array
     if (jobCode) {
       const selectedJob = jobs.find((j) => j.job_code === jobCode);
       if (selectedJob && selectedJob.id) {
@@ -454,6 +462,10 @@ export default function CreateCampaignModal({
 
   const saveDraft = () => {
     try {
+      // Get jobId from the selected job
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      const jobId = selectedJob?.id ?? initialValues?.jobId;
+
       const draft = {
         id:
           initialValues?.id ??
@@ -463,6 +475,7 @@ export default function CreateCampaignModal({
         jobCode,
         // Store jobRole into legacy jobInfo field for compatibility in drafts pages
         jobInfo: jobRole,
+        jobId, // Store jobId for ATS integration
         savedAt: new Date().toISOString(),
       };
       const nextDrafts = upsertDraft(draft);
@@ -735,14 +748,6 @@ export default function CreateCampaignModal({
             {error && <p className="text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button
-                type="button"
-                variant="default"
-                className="bg-primary-600 text-white hover:bg-primary-700"
-                onClick={() => setShowAddDialog(true)}
-              >
-                Add candidates
-              </Button>
               <Button
                 type="button"
                 variant="outline"
