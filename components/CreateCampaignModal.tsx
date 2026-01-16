@@ -210,10 +210,12 @@ export default function CreateCampaignModal({
   const [atsCandidatesLoading, setAtsCandidatesLoading] = useState(false);
   const [atsCandidatesError, setAtsCandidatesError] = useState<string>("");
   const [atsPage, setAtsPage] = useState(1);
-  const [atsPageSize, setAtsPageSize] = useState(10);
-  const [selectedCandidates, setSelectedCandidates] = useState<Set<number>>(
+  const [atsPageSize, setAtsPageSize] = useState(25);
+  const [atsSearch, setAtsSearch] = useState("");
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(
     new Set()
   );
+  const [selectAllPages, setSelectAllPages] = useState(false);
   const [atsTotalCount, setAtsTotalCount] = useState(0);
   const atsTotalCountRef = useRef(0); // Keep track of total count across renders
   const singleInputRef = useRef<HTMLInputElement | null>(null);
@@ -239,13 +241,30 @@ export default function CreateCampaignModal({
     return acceptedExt.some((ext) => name.endsWith(ext));
   };
 
-  // Fetch ATS candidates (with fallback to fetch-all for pagination issues)
+  const getCandidateKey = (
+    candidate: any,
+    idx: number,
+    pageOverride?: number
+  ) => {
+    return (
+      candidate?.id?.toString() ||
+      candidate?.submission_id?.toString() ||
+      candidate?.candidate_id?.toString() ||
+      `${
+        candidate?.candidate_email ||
+        candidate?.candidate_mobile ||
+        candidate?.candidate_name ||
+        "candidate"
+      }-${candidate?.job_code || "job"}-${(pageOverride ?? atsPage) - 1}-${idx}`
+    );
+  };
+
+  // Fetch ATS candidates with server-side pagination (API max page_size = 25)
   const fetchAtsCandidates = async (
     jobId: number,
     page: number = 1,
-    pageSize: number = 10,
-    knownTotalCount?: number,
-    retryMode: boolean = false
+    pageSize: number = 25,
+    knownTotalCount?: number
   ) => {
     setAtsCandidatesLoading(true);
     setAtsCandidatesError("");
@@ -263,23 +282,15 @@ export default function CreateCampaignModal({
         );
       }
 
-      // If pagination failed before, try fetching all candidates with a high page size
-      const effectivePageSize = retryMode ? 1000 : pageSize;
-      const effectivePage = retryMode ? 1 : page;
-
       let response = await fetch(
-        `/api/candidates/submissions?job_id=${jobId}&page=${effectivePage}&page_size=${effectivePageSize}`,
+        `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
         {
           method: "GET",
           headers,
         }
       );
 
-      console.log(
-        "[fetchAtsCandidates] Response status:",
-        response.status,
-        retryMode ? "(retry mode)" : ""
-      );
+      console.log("[fetchAtsCandidates] Response status:", response.status);
 
       // If 401, try alternate format
       if (response.status === 401 && effectiveToken) {
@@ -289,7 +300,7 @@ export default function CreateCampaignModal({
         );
         headers["Authorization"] = `${alternateFormat} ${effectiveToken}`;
         response = await fetch(
-          `/api/candidates/submissions?job_id=${jobId}&page=${effectivePage}&page_size=${effectivePageSize}`,
+          `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
           {
             method: "GET",
             headers,
@@ -313,30 +324,13 @@ export default function CreateCampaignModal({
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error("[fetchAtsCandidates] Error response:", errorData);
-
-        // If pagination failed and we haven't retried, try fetch-all mode
-        if (!retryMode && page > 1 && atsTotalCountRef.current > 0) {
-          console.log(
-            "[fetchAtsCandidates] Pagination failed, retrying with fetch-all mode..."
-          );
-          await fetchAtsCandidates(
-            jobId,
-            page,
-            pageSize,
-            knownTotalCount,
-            true
-          );
-          return;
-        }
-
         throw new Error(errorData?.error || "Failed to fetch candidates");
       }
 
       const data = await response.json();
       const resultsReceived = data.results?.length || 0;
       console.log(
-        `[fetchAtsCandidates] Page ${effectivePage}: Got ${resultsReceived} candidates, API count: ${data.count}`,
-        retryMode ? "(fetch-all mode)" : ""
+        `[fetchAtsCandidates] Page ${page}: Got ${resultsReceived} candidates, API count: ${data.count}`
       );
 
       // Store total count
@@ -357,20 +351,21 @@ export default function CreateCampaignModal({
         atsTotalCountRef.current = actualTotalCount;
       }
 
-      // If in retry mode (fetch-all), slice the results to the requested page
-      let candidatesToShow = data.results || data.data || [];
-      if (retryMode && effectivePageSize === 1000) {
-        const start = (page - 1) * pageSize;
-        const end = start + pageSize;
-        console.log(
-          `[fetchAtsCandidates] Slicing results: [${start}:${end}] from ${candidatesToShow.length} total`
-        );
-        candidatesToShow = candidatesToShow.slice(start, end);
-      }
-
       // Update candidates and total count
+      const candidatesToShow = data.results || data.data || [];
       setAtsCandidates(candidatesToShow);
       setAtsTotalCount(actualTotalCount || 0);
+
+      // If "select all" is enabled, auto-add current page candidates to the selection set
+      if (selectAllPages) {
+        setSelectedCandidates((prev) => {
+          const next = new Set(prev);
+          candidatesToShow.forEach((candidate: any, idx: number) => {
+            next.add(getCandidateKey(candidate, idx, page));
+          });
+          return next;
+        });
+      }
 
       // Validate pagination
       if (actualTotalCount > 0) {
@@ -385,37 +380,7 @@ export default function CreateCampaignModal({
             `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`
           );
           setAtsPage(maxPage);
-          await fetchAtsCandidates(
-            jobId,
-            maxPage,
-            pageSize,
-            actualTotalCount,
-            false
-          );
-          return;
-        }
-
-        // If we got empty results on a valid page, it might be a server issue
-        if (
-          candidatesToShow.length === 0 &&
-          page <= maxPage &&
-          page > 1 &&
-          !retryMode
-        ) {
-          console.warn(
-            `[fetchAtsCandidates] Page ${page} returned 0 results but should be valid (max: ${maxPage})`
-          );
-          // Retry with fetch-all mode to work around pagination issues
-          console.log(
-            "[fetchAtsCandidates] Attempting fetch-all mode workaround..."
-          );
-          await fetchAtsCandidates(
-            jobId,
-            page,
-            pageSize,
-            actualTotalCount,
-            true
-          );
+          await fetchAtsCandidates(jobId, maxPage, pageSize, actualTotalCount);
           return;
         }
       }
@@ -1296,42 +1261,78 @@ export default function CreateCampaignModal({
 
           {!atsCandidatesLoading && atsCandidates.length > 0 && (
             <>
-              <div className="flex items-center justify-between px-1 pb-2 border-b">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                    checked={
-                      selectedCandidates.size === atsCandidates.length &&
-                      atsCandidates.length > 0
-                    }
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedCandidates(
-                          new Set(atsCandidates.map((_, i) => i))
-                        );
-                      } else {
-                        setSelectedCandidates(new Set());
+              <div className="flex flex-col gap-3 px-1 pb-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      checked={
+                        selectAllPages ||
+                        (atsCandidates.length > 0 &&
+                          atsCandidates.every((candidate, idx) =>
+                            selectedCandidates.has(
+                              getCandidateKey(candidate, idx)
+                            )
+                          ))
                       }
-                    }}
-                  />
-                  <span className="text-sm text-gray-700">
-                    {selectedCandidates.size > 0
-                      ? `${selectedCandidates.size} selected`
-                      : "Select all"}
-                  </span>
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          // Enable select-all across pages and add current page
+                          setSelectAllPages(true);
+                          setSelectedCandidates((prev) => {
+                            const next = new Set(prev);
+                            atsCandidates.forEach((candidate, idx) => {
+                              next.add(getCandidateKey(candidate, idx));
+                            });
+                            return next;
+                          });
+                        } else {
+                          setSelectAllPages(false);
+                          setSelectedCandidates(new Set());
+                        }
+                      }}
+                    />
+                    <span className="text-sm text-gray-700">
+                      {selectAllPages
+                        ? `All${
+                            atsTotalCount ? ` (${atsTotalCount})` : ""
+                          } selected`
+                        : selectedCandidates.size > 0
+                        ? `${selectedCandidates.size} selected`
+                        : "Select all"}
+                    </span>
+                  </div>
+                  {(selectAllPages || selectedCandidates.size > 0) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-gray-600 hover:text-gray-900"
+                      onClick={() => {
+                        setSelectAllPages(false);
+                        setSelectedCandidates(new Set());
+                      }}
+                    >
+                      Clear selection
+                    </Button>
+                  )}
                 </div>
-                {selectedCandidates.size > 0 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-gray-600 hover:text-gray-900"
-                    onClick={() => setSelectedCandidates(new Set())}
-                  >
-                    Clear selection
-                  </Button>
-                )}
+
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="search"
+                    value={atsSearch}
+                    onChange={(e) => setAtsSearch(e.target.value)}
+                    placeholder="Search candidates by name, email, mobile, job code, or location"
+                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500"
+                  />
+                  {atsSearch && (
+                    <div className="text-xs text-gray-500">
+                      Showing results for "{atsSearch}"
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="overflow-auto flex-1 -mx-6 px-6">
@@ -1364,83 +1365,107 @@ export default function CreateCampaignModal({
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {atsCandidates
-                        .slice(0, atsPageSize)
-                        .map((candidate: any, idx: number) => (
-                          <tr
-                            key={idx}
-                            className={`hover:bg-gray-50 transition-colors cursor-pointer ${
-                              selectedCandidates.has(idx) ? "bg-blue-50" : ""
-                            }`}
-                            onClick={() => {
-                              const newSelected = new Set(selectedCandidates);
-                              if (newSelected.has(idx)) {
-                                newSelected.delete(idx);
-                              } else {
-                                newSelected.add(idx);
-                              }
-                              setSelectedCandidates(newSelected);
-                            }}
-                          >
-                            <td className="px-3 py-4">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                                checked={selectedCandidates.has(idx)}
-                                onChange={() => {}}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </td>
-                            <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
-                              {candidate.submission_on
-                                ? new Date(
-                                    candidate.submission_on
-                                  ).toLocaleDateString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  })
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-4">
-                              <div className="font-medium text-gray-900">
-                                {candidate.candidate_name || "—"}
-                              </div>
-                              {candidate.candidate_email && (
-                                <div className="text-xs text-gray-500 mt-0.5">
-                                  {candidate.candidate_email}
+                        .filter((candidate) => {
+                          if (!atsSearch.trim()) return true;
+                          const q = atsSearch.toLowerCase();
+                          const fields = [
+                            candidate.candidate_name,
+                            candidate.candidate_email,
+                            candidate.candidate_mobile,
+                            candidate.candidate_location,
+                            candidate.job_code,
+                            candidate.job_title,
+                          ]
+                            .filter(Boolean)
+                            .map((v: string) => v.toLowerCase());
+                          return fields.some((field: string) =>
+                            field.includes(q)
+                          );
+                        })
+                        .map((candidate: any, idx: number) => {
+                          const key = getCandidateKey(candidate, idx);
+                          const isSelected =
+                            selectAllPages || selectedCandidates.has(key);
+                          return (
+                            <tr
+                              key={key}
+                              className={`hover:bg-gray-50 transition-colors cursor-pointer ${
+                                isSelected ? "bg-blue-50" : ""
+                              }`}
+                              onClick={() => {
+                                setSelectedCandidates((prev) => {
+                                  const next = new Set(prev);
+                                  if (isSelected) {
+                                    next.delete(key);
+                                    setSelectAllPages(false);
+                                  } else {
+                                    next.add(key);
+                                  }
+                                  return next;
+                                });
+                              }}
+                            >
+                              <td className="px-3 py-4">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </td>
+                              <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
+                                {candidate.submission_on
+                                  ? new Date(
+                                      candidate.submission_on
+                                    ).toLocaleDateString("en-US", {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    })
+                                  : "—"}
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="font-medium text-gray-900">
+                                  {candidate.candidate_name || "—"}
                                 </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-4 text-gray-700 whitespace-nowrap">
-                              {candidate.candidate_mobile || "—"}
-                            </td>
-                            <td className="px-3 py-4 text-gray-600 text-xs">
-                              {candidate.candidate_location || "—"}
-                            </td>
-                            <td className="px-3 py-4">
-                              <div className="font-medium text-gray-900 text-xs">
-                                {candidate.job_code || "—"}
-                              </div>
-                              {candidate.job_title && (
-                                <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
-                                  {candidate.job_title}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-4">
-                              <div className="text-gray-700 text-xs">
-                                {candidate.submitted_by_name || "—"}
-                              </div>
-                              {candidate.updated_by_name &&
-                                candidate.updated_by_name !==
-                                  candidate.submitted_by_name && (
+                                {candidate.candidate_email && (
                                   <div className="text-xs text-gray-500 mt-0.5">
-                                    Updated: {candidate.updated_by_name}
+                                    {candidate.candidate_email}
                                   </div>
                                 )}
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="px-3 py-4 text-gray-700 whitespace-nowrap">
+                                {candidate.candidate_mobile || "—"}
+                              </td>
+                              <td className="px-3 py-4 text-gray-600 text-xs">
+                                {candidate.candidate_location || "—"}
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="font-medium text-gray-900 text-xs">
+                                  {candidate.job_code || "—"}
+                                </div>
+                                {candidate.job_title && (
+                                  <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
+                                    {candidate.job_title}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="text-gray-700 text-xs">
+                                  {candidate.submitted_by_name || "—"}
+                                </div>
+                                {candidate.updated_by_name &&
+                                  candidate.updated_by_name !==
+                                    candidate.submitted_by_name && (
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      Updated: {candidate.updated_by_name}
+                                    </div>
+                                  )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
@@ -1465,7 +1490,6 @@ export default function CreateCampaignModal({
                         onClick={async () => {
                           const newPage = atsPage - 1;
                           setAtsPage(newPage);
-                          setSelectedCandidates(new Set()); // Clear selection on page change
                           const jobId = getSelectedJobId();
                           if (jobId)
                             await fetchAtsCandidates(
@@ -1492,7 +1516,6 @@ export default function CreateCampaignModal({
                         onClick={async () => {
                           const newPage = atsPage + 1;
                           setAtsPage(newPage);
-                          setSelectedCandidates(new Set()); // Clear selection on page change
                           const jobId = getSelectedJobId();
                           if (jobId)
                             await fetchAtsCandidates(
@@ -1513,10 +1536,17 @@ export default function CreateCampaignModal({
 
           <div className="border-t pt-4 flex flex-col sm:flex-row justify-between items-center gap-3">
             <div className="text-sm text-gray-600">
-              {selectedCandidates.size > 0 && (
+              {(selectAllPages || selectedCandidates.size > 0) && (
                 <span className="font-medium text-primary-600">
-                  {selectedCandidates.size} candidate
-                  {selectedCandidates.size !== 1 ? "s" : ""} ready to import
+                  {selectAllPages && atsTotalCount > 0
+                    ? atsTotalCount
+                    : selectedCandidates.size}{" "}
+                  candidate
+                  {(selectAllPages && atsTotalCount > 1) ||
+                  (!selectAllPages && selectedCandidates.size !== 1)
+                    ? "s"
+                    : ""}{" "}
+                  ready to import
                 </span>
               )}
             </div>
@@ -1526,6 +1556,7 @@ export default function CreateCampaignModal({
                 variant="outline"
                 onClick={() => {
                   setShowAtsCandidatesModal(false);
+                  setSelectAllPages(false);
                   setSelectedCandidates(new Set());
                 }}
               >
@@ -1533,12 +1564,14 @@ export default function CreateCampaignModal({
               </Button>
               <Button
                 type="button"
-                disabled={selectedCandidates.size === 0}
+                disabled={!selectAllPages && selectedCandidates.size === 0}
                 onClick={() => {
                   // TODO: Implement import functionality
-                  const selected = atsCandidates.filter((_, idx) =>
-                    selectedCandidates.has(idx)
-                  );
+                  const selected = selectAllPages
+                    ? atsCandidates
+                    : atsCandidates.filter((candidate, idx) =>
+                        selectedCandidates.has(getCandidateKey(candidate, idx))
+                      );
                   console.log("Importing candidates:", selected);
                   // For now, just close the modal
                   setShowAtsCandidatesModal(false);
@@ -1546,7 +1579,11 @@ export default function CreateCampaignModal({
                 }}
               >
                 Import{" "}
-                {selectedCandidates.size > 0
+                {selectAllPages
+                  ? atsTotalCount > 0
+                    ? `(${atsTotalCount})`
+                    : "(All)"
+                  : selectedCandidates.size > 0
                   ? `(${selectedCandidates.size})`
                   : "Selected"}
               </Button>

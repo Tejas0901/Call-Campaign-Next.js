@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { FileText, MoreVertical, Clock } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,6 +27,8 @@ export default function DraftCard({
   onContinue,
   onDelete,
 }: DraftCardProps) {
+  const router = useRouter();
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -46,7 +49,7 @@ export default function DraftCard({
           <div className="flex items-start justify-between mb-2">
             <div
               className="flex-1 cursor-pointer"
-              onClick={() => onContinue(draft)}
+              onClick={() => router.push(`/campaigns/drafts/${draft.id}`)}
             >
               <h3 className="text-lg font-semibold text-gray-900 mb-1 hover:text-primary-600 transition-colors">
                 {draft.jobInfo || "Untitled Draft"}
@@ -65,13 +68,22 @@ export default function DraftCard({
                   <MoreVertical className="w-5 h-5 text-gray-400" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-32">
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/campaigns/drafts/${draft.id}`);
+                  }}
+                  className="hover:bg-blue-50 hover:text-blue-700"
+                >
+                  View
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
                     onContinue(draft);
                   }}
-                  className="hover:bg-blue-50 hover:text-blue-700"
+                  className="hover:bg-green-50 hover:text-green-700"
                 >
                   Continue
                 </DropdownMenuItem>
