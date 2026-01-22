@@ -4,9 +4,9 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
+import { SearchBox } from "@/components/ui/search-box";
 
 interface Campaign {
   id: string;
@@ -469,15 +469,13 @@ export default function AtsCandidatesPage() {
                   </div>
 
                   {/* Search Box */}
-                  <div className="max-w-md">
-                    <Input
-                      type="text"
-                      placeholder="Search by name, phone, email, location, or job..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
+                  <SearchBox
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    onClear={() => setSearchQuery("")}
+                    placeholder="Search by name, phone, email, location, or job..."
+                    containerClassName="max-w-md"
+                  />
                 </div>
 
                 {/* Candidates Table */}

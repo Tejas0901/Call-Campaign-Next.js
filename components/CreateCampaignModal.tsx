@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchBox } from "@/components/ui/search-box";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -22,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { UploadCloud, FileText, Trash2, X } from "lucide-react";
 import { Combobox, ComboboxOption } from "@/components/ui/combobox";
 import { useJobCodes } from "@/hooks/useJobCodes";
+import { LocationMultiSelect } from "@/components/LocationMultiSelect";
 
 interface CreateCampaignModalProps {
   open: boolean;
@@ -841,82 +843,24 @@ export default function CreateCampaignModal({
 
                 <div className="space-y-2">
                   <Label htmlFor="location">Primary Location</Label>
-                  <Input
-                    id="location"
-                    type="text"
-                    placeholder="e.g., Bangalore"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                  <LocationMultiSelect
+                    value={location ? [location] : []}
+                    onChange={(locs) => setLocation(locs[0] || "")}
+                    label=""
+                    placeholder="Search and select primary city..."
+                    maxLocations={1}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="locationInput">Multiple Locations</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="locationInput"
-                      type="text"
-                      placeholder="Add a city"
-                      value={locationInput}
-                      onChange={(e) => setLocationInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          if (
-                            locationInput.trim() &&
-                            !multipleLocations.includes(locationInput.trim())
-                          ) {
-                            setMultipleLocations([
-                              ...multipleLocations,
-                              locationInput.trim(),
-                            ]);
-                            setLocationInput("");
-                          }
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (
-                          locationInput.trim() &&
-                          !multipleLocations.includes(locationInput.trim())
-                        ) {
-                          setMultipleLocations([
-                            ...multipleLocations,
-                            locationInput.trim(),
-                          ]);
-                          setLocationInput("");
-                        }
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                  {multipleLocations.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {multipleLocations.map((loc) => (
-                        <div
-                          key={loc}
-                          className="inline-flex items-center gap-2 bg-primary-100 text-primary-800 px-3 py-1 rounded-full text-sm"
-                        >
-                          {loc}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setMultipleLocations(
-                                multipleLocations.filter((l) => l !== loc),
-                              )
-                            }
-                            className="text-primary-600 hover:text-primary-900"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <LocationMultiSelect
+                    value={multipleLocations}
+                    onChange={setMultipleLocations}
+                    label=""
+                    placeholder="Search and select Indian cities..."
+                    maxLocations={10}
+                  />
                 </div>
               </div>
             </div>
@@ -1720,12 +1664,13 @@ export default function CreateCampaignModal({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <input
-                    type="search"
+                  <SearchBox
                     value={atsSearch}
-                    onChange={(e) => setAtsSearch(e.target.value)}
+                    onChange={setAtsSearch}
+                    onClear={() => setAtsSearch("")}
                     placeholder="Search candidates by name, email, mobile, job code, or location"
-                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500"
+                    containerClassName="w-full"
+                    inputClassName="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500"
                   />
                   {atsSearch && (
                     <div className="text-xs text-gray-500">

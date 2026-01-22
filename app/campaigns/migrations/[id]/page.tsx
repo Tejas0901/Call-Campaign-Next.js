@@ -21,6 +21,7 @@ import CandidatesTable, {
 } from "@/components/ui/candidates-table";
 import AddCandidatesWorkflow from "@/components/campaigns/AddCandidatesWorkflow";
 import { filterJobsByCode } from "@/lib/api-integrations";
+import { SearchBox } from "@/components/ui/search-box";
 
 export default function MigrationDetailPage() {
   const params = useParams();
@@ -33,108 +34,10 @@ export default function MigrationDetailPage() {
   const [hyrexAuthToken, setHyrexAuthToken] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [jobId, setJobId] = useState<number | null>(null);
-  const [candidates, setCandidates] = useState<CandidateRow[]>([
-    {
-      id: "1",
-      name: "Alice Johnson",
-      phone: "+1 (555) 210-1122",
-      email: "alice.johnson@example.com",
-      resume: null,
-      resumeFileName: "alice-johnson.pdf",
-      role: "Sales Lead",
-      company: "Acme Corp",
-    },
-    {
-      id: "2",
-      name: "Brian Lee",
-      phone: "+1 (555) 455-7821",
-      email: "brian.lee@example.com",
-      resume: null,
-      resumeFileName: "brian-lee.pdf",
-      role: "Account Executive",
-      company: "Northwind",
-    },
-    {
-      id: "3",
-      name: "Chloe Patel",
-      phone: "+1 (555) 318-0044",
-      email: "chloe.patel@example.com",
-      resume: null,
-      resumeFileName: "chloe-patel.pdf",
-      role: "BDR",
-      company: "Globex",
-    },
-    {
-      id: "4",
-      name: "Daniel Kim",
-      phone: "+1 (555) 980-2211",
-      email: "daniel.kim@example.com",
-      resume: null,
-      resumeFileName: "daniel-kim.pdf",
-      role: "SDR",
-      company: "Initech",
-    },
-    {
-      id: "5",
-      name: "Emma Garcia",
-      phone: "+1 (555) 441-7788",
-      email: "emma.garcia@example.com",
-      resume: null,
-      resumeFileName: "emma-garcia.pdf",
-      role: "Marketing Ops",
-      company: "Soylent",
-    },
-    {
-      id: "6",
-      name: "Felix Braun",
-      phone: "+1 (555) 667-9023",
-      email: "felix.braun@example.com",
-      resume: null,
-      resumeFileName: "felix-braun.pdf",
-      role: "Product Marketing",
-      company: "Umbrella",
-    },
-    {
-      id: "7",
-      name: "Grace Liu",
-      phone: "+1 (555) 744-1199",
-      email: "grace.liu@example.com",
-      resume: null,
-      resumeFileName: "grace-liu.pdf",
-      role: "Customer Success",
-      company: "Vehement",
-    },
-    {
-      id: "8",
-      name: "Hector Ramirez",
-      phone: "+1 (555) 215-6644",
-      email: "hector.ramirez@example.com",
-      resume: null,
-      resumeFileName: "hector-ramirez.pdf",
-      role: "Sales Ops",
-      company: "Stark Industries",
-    },
-    {
-      id: "9",
-      name: "Isabella Rossi",
-      phone: "+1 (555) 839-7755",
-      email: "isabella.rossi@example.com",
-      resume: null,
-      resumeFileName: "isabella-rossi.pdf",
-      role: "AE",
-      company: "Wayne Corp",
-    },
-    {
-      id: "10",
-      name: "Jack Wilson",
-      phone: "+1 (555) 930-4433",
-      email: "jack.wilson@example.com",
-      resume: null,
-      resumeFileName: "jack-wilson.pdf",
-      role: "Outbound SDR",
-      company: "Wonka Co",
-    },
-  ]);
+  const [candidates, setCandidates] = useState<CandidateRow[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidatesError, setCandidatesError] = useState<string | null>(null);
+  const [candidateSearch, setCandidateSearch] = useState("");
 
   // Get auth tokens on mount
   useEffect(() => {
@@ -310,6 +213,127 @@ export default function MigrationDetailPage() {
     fetchJobId();
   }, [campaign?.job_code, campaign?.jobCode, hyrexAuthToken]);
 
+  // Fetch contacts for this campaign
+  useEffect(() => {
+    const fetchContacts = async () => {
+      if (!authToken || !campaignId) {
+        console.log(
+          "[MigrationDetailPage] Skipping contacts fetch: missing token or campaignId",
+        );
+        return;
+      }
+
+      setCandidatesLoading(true);
+      setCandidatesError(null);
+
+      try {
+        const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+        if (!TENANT_ID) {
+          throw new Error("Missing TENANT_ID configuration");
+        }
+
+        console.log(
+          "[MigrationDetailPage] Fetching contacts for campaign:",
+          campaignId,
+        );
+
+        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        if (!baseUrl) {
+          throw new Error("Missing NEXT_PUBLIC_API_BASE_URL configuration");
+        }
+
+        const response = await fetch(
+          `${baseUrl.replace(/\/$/, "")}/api/v1/contacts/${campaignId}`,
+          {
+            method: "GET",
+            headers: {
+              "tenant-id": TENANT_ID,
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+              "ngrok-skip-browser-warning": "69420",
+            },
+          },
+        );
+
+        const contentType = response.headers.get("content-type") || "";
+
+        // For non-JSON responses, read the text once so we don't exhaust the stream twice
+        const isJson = contentType.includes("application/json");
+        const responseText = isJson ? null : await response.text();
+
+        if (!response.ok) {
+          if (isJson) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData?.error ||
+                errorData?.message ||
+                `Failed to fetch contacts: ${response.status}`,
+            );
+          }
+
+          console.error(
+            "[MigrationDetailPage] Non-JSON error response:",
+            (responseText || "").substring(0, 300),
+          );
+          throw new Error(
+            `Failed to fetch contacts (${response.status}): ${(responseText || "").substring(0, 160)}`,
+          );
+        }
+
+        let result: any;
+        try {
+          if (!isJson) {
+            console.error(
+              "[MigrationDetailPage] Expected JSON but got:",
+              (responseText || "").substring(0, 300),
+            );
+            throw new Error("Contacts API did not return JSON");
+          }
+
+          result = await response.json();
+        } catch (parseError) {
+          console.error(
+            "[MigrationDetailPage] Failed to parse contacts JSON:",
+            parseError,
+          );
+          throw new Error("Failed to parse contacts response as JSON");
+        }
+        console.log("[MigrationDetailPage] Contacts response:", result);
+
+        // Transform API response to CandidateRow format
+        if (result.success && result.data?.contacts) {
+          const transformedCandidates: CandidateRow[] =
+            result.data.contacts.map((contact: any) => ({
+              id: contact.id,
+              name: contact.candidate_name || "Unknown",
+              phone: contact.phone_number || "—",
+              email: contact.email || "—",
+              resume: contact.resume_url || null,
+              resumeFileName: contact.resume_url
+                ? contact.resume_url.split("/").pop()
+                : null,
+              candidateId: contact.ats_candidate_id || contact.id,
+            }));
+          setCandidates(transformedCandidates);
+          console.log(
+            "[MigrationDetailPage] Transformed candidates:",
+            transformedCandidates,
+          );
+        } else {
+          setCandidates([]);
+        }
+      } catch (err: any) {
+        console.error("[MigrationDetailPage] Error fetching contacts:", err);
+        setCandidatesError(err?.message || "Failed to fetch contacts");
+        setCandidates([]);
+      } finally {
+        setCandidatesLoading(false);
+      }
+    };
+
+    fetchContacts();
+  }, [authToken, campaignId]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -360,6 +384,21 @@ export default function MigrationDetailPage() {
     container: "bg-gray-50 text-gray-700",
     dot: "bg-gray-500",
   };
+
+  const filteredCandidates = candidates.filter((candidate) => {
+    if (!candidateSearch.trim()) return true;
+    const query = candidateSearch.toLowerCase();
+    const fields = [
+      candidate.name,
+      candidate.email,
+      candidate.phone,
+      candidate.candidateId,
+      candidate.resumeFileName,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    return fields.some((field) => field.includes(query));
+  });
 
   return (
     <>
@@ -530,18 +569,52 @@ export default function MigrationDetailPage() {
                       Candidates
                     </h2>
                     <p className="text-sm text-gray-600">
-                      Uploaded candidate data for this campaign
+                      Imported candidate data for this campaign
                     </p>
                   </div>
                   <span className="text-sm text-gray-500">
-                    {candidates.length} total
+                    {candidateSearch
+                      ? `${filteredCandidates.length} matching · ${candidates.length} total`
+                      : `${candidates.length} total`}
                   </span>
                 </div>
                 <div className="p-6">
-                  <CandidatesTable
-                    data={candidates}
-                    onDataChange={setCandidates}
-                  />
+                  <div className="mb-4">
+                    <SearchBox
+                      value={candidateSearch}
+                      onChange={setCandidateSearch}
+                      onClear={() => setCandidateSearch("")}
+                      placeholder="Search candidates by name, email, phone, ID, or resume file"
+                    />
+                    {candidateSearch && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        Showing {filteredCandidates.length} of{" "}
+                        {candidates.length}
+                      </p>
+                    )}
+                  </div>
+                  {candidatesLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                        <p className="text-gray-600 text-sm">
+                          Loading candidates...
+                        </p>
+                      </div>
+                    </div>
+                  ) : candidatesError ? (
+                    <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+                      <p className="text-sm text-red-700 font-medium">Error</p>
+                      <p className="text-sm text-red-600 mt-1">
+                        {candidatesError}
+                      </p>
+                    </div>
+                  ) : (
+                    <CandidatesTable
+                      data={filteredCandidates}
+                      onDataChange={setCandidates}
+                    />
+                  )}
                 </div>
               </div>
             </div>

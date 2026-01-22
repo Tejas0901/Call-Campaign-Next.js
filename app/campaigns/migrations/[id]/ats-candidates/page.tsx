@@ -4,7 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { ArrowLeft, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchBox } from "@/components/ui/search-box";
 import { fetchAtsCandidatesShared } from "@/lib/ats-candidates";
 import { filterJobsByCode } from "@/lib/api-integrations";
 
@@ -441,12 +441,12 @@ export default function MigrationAtsCandidatesPage() {
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <Input
-                    type="search"
+                  <SearchBox
                     value={atsSearch}
-                    onChange={(e) => setAtsSearch(e.target.value)}
+                    onChange={setAtsSearch}
+                    onClear={() => setAtsSearch("")}
                     placeholder="Search candidates by name, email, mobile, job code, or location"
-                    className="w-full"
+                    containerClassName="w-full"
                   />
                   {atsSearch && (
                     <div className="text-xs text-gray-500">
