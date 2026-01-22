@@ -45,7 +45,7 @@ interface CreateCampaignModalProps {
       jobInfo: string;
       jobId?: number; // Added for ATS integration
       savedAt: string;
-    }>
+    }>,
   ) => void;
 }
 
@@ -57,16 +57,48 @@ export default function CreateCampaignModal({
   onCreated,
   onDraftSaved,
 }: CreateCampaignModalProps) {
-  // Form fields
+  // Basic Information Section
+  const [campaignName, setCampaignName] = useState("");
+  const [jobId, setJobId] = useState<number | null>(null);
   const [jobCode, setJobCode] = useState("");
   const [jobRole, setJobRole] = useState("");
+  const [description, setDescription] = useState("");
+
+  // Company Details Section
   const [companyName, setCompanyName] = useState("");
-  const [location, setLocation] = useState("");
+  const [clientName, setClientName] = useState("");
+
+  // Job Details Section
+  const [jobType, setJobType] = useState<string>("full_time");
   const [workMode, setWorkMode] = useState<string>("");
-  const [minExp, setMinExp] = useState("");
-  const [maxExp, setMaxExp] = useState("");
+  const [location, setLocation] = useState("");
+  const [multipleLocations, setMultipleLocations] = useState<string[]>([]);
+  const [locationInput, setLocationInput] = useState("");
+
+  // Compensation Section
   const [minCTC, setMinCTC] = useState("");
   const [maxCTC, setMaxCTC] = useState("");
+
+  // Experience Section
+  const [minExp, setMinExp] = useState("");
+  const [maxExp, setMaxExp] = useState("");
+
+  // Shift & Interview Section
+  const [shiftType, setShiftType] = useState<string>("");
+  const [interviewMode, setInterviewMode] = useState<string>("");
+
+  // Walk-in Drive Section
+  const [isWalkinDrive, setIsWalkinDrive] = useState(false);
+  const [driveDate, setDriveDate] = useState("");
+  const [driveLocation, setDriveLocation] = useState("");
+  const [driveTime, setDriveTime] = useState("");
+
+  // Voice Settings Section
+  const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
+
+  // Legacy fields (for backward compatibility)
+  const [primarySkills, setPrimarySkills] = useState("");
+  const [frontendSkills, setFrontendSkills] = useState("");
   const [jobDetails, setJobDetails] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -93,13 +125,13 @@ export default function CreateCampaignModal({
         if (stored) {
           console.log(
             "[CreateCampaignModal] Token loaded from localStorage on mount:",
-            !!stored
+            !!stored,
           );
           return stored;
         }
       }
       return undefined;
-    }
+    },
   );
 
   useEffect(() => {
@@ -109,7 +141,7 @@ export default function CreateCampaignModal({
         setTokenFromStorage(stored);
         console.log(
           "[CreateCampaignModal] Token read from localStorage:",
-          !!stored
+          !!stored,
         );
       }
     }
@@ -120,7 +152,7 @@ export default function CreateCampaignModal({
   console.log(
     "[CreateCampaignModal] Effective authToken:",
     !!effectiveToken,
-    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined"
+    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined",
   );
 
   const {
@@ -142,6 +174,7 @@ export default function CreateCampaignModal({
       const selectedJob = jobs.find((j) => j.job_code === jobCode);
       if (selectedJob) {
         // Auto-fill all fields from API data
+        setJobId(selectedJob.id ?? null);
         setJobRole(selectedJob.title || "");
         setCompanyName(selectedJob.client_name || "");
 
@@ -175,9 +208,12 @@ export default function CreateCampaignModal({
         }
 
         if (selectedJob.description) {
-          setJobDetails(toPlainText(selectedJob.description));
+          const plainDescription = toPlainText(selectedJob.description);
+          setJobDetails(plainDescription);
+          setDescription(plainDescription);
         } else {
           setJobDetails("");
+          setDescription("");
         }
 
         if (selectedJob.created_by?.email) {
@@ -215,7 +251,7 @@ export default function CreateCampaignModal({
   const [atsPageSize, setAtsPageSize] = useState(25);
   const [atsSearch, setAtsSearch] = useState("");
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
   const [selectAllPages, setSelectAllPages] = useState(false);
   const [atsTotalCount, setAtsTotalCount] = useState(0);
@@ -246,7 +282,7 @@ export default function CreateCampaignModal({
   const getCandidateKey = (
     candidate: any,
     idx: number,
-    pageOverride?: number
+    pageOverride?: number,
   ) => {
     return (
       candidate?.id?.toString() ||
@@ -266,7 +302,7 @@ export default function CreateCampaignModal({
     jobId: number,
     page: number = 1,
     pageSize: number = 25,
-    knownTotalCount?: number
+    knownTotalCount?: number,
   ) => {
     setAtsCandidatesLoading(true);
     setAtsCandidatesError("");
@@ -280,7 +316,7 @@ export default function CreateCampaignModal({
       if (effectiveToken) {
         headers["Authorization"] = `${authFormat} ${effectiveToken}`;
         console.log(
-          `[fetchAtsCandidates] Using ${authFormat} format on page ${page}`
+          `[fetchAtsCandidates] Using ${authFormat} format on page ${page}`,
         );
       }
 
@@ -289,7 +325,7 @@ export default function CreateCampaignModal({
         {
           method: "GET",
           headers,
-        }
+        },
       );
 
       console.log("[fetchAtsCandidates] Response status:", response.status);
@@ -298,7 +334,7 @@ export default function CreateCampaignModal({
       if (response.status === 401 && effectiveToken) {
         const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
         console.log(
-          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`
+          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`,
         );
         headers["Authorization"] = `${alternateFormat} ${effectiveToken}`;
         response = await fetch(
@@ -306,11 +342,11 @@ export default function CreateCampaignModal({
           {
             method: "GET",
             headers,
-          }
+          },
         );
         console.log(
           `[fetchAtsCandidates] ${alternateFormat} attempt status:`,
-          response.status
+          response.status,
         );
 
         // If successful with alternate format, remember it
@@ -318,7 +354,7 @@ export default function CreateCampaignModal({
           authFormat = alternateFormat;
           setStoredAuthFormat(alternateFormat);
           console.log(
-            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`
+            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`,
           );
         }
       }
@@ -332,7 +368,7 @@ export default function CreateCampaignModal({
       const data = await response.json();
       const resultsReceived = data.results?.length || 0;
       console.log(
-        `[fetchAtsCandidates] Page ${page}: Got ${resultsReceived} candidates, API count: ${data.count}`
+        `[fetchAtsCandidates] Page ${page}: Got ${resultsReceived} candidates, API count: ${data.count}`,
       );
 
       // Store total count
@@ -345,7 +381,7 @@ export default function CreateCampaignModal({
       ) {
         actualTotalCount = knownTotalCount;
         console.log(
-          `[fetchAtsCandidates] API didn't return count, using known count: ${actualTotalCount}`
+          `[fetchAtsCandidates] API didn't return count, using known count: ${actualTotalCount}`,
         );
       }
 
@@ -373,13 +409,13 @@ export default function CreateCampaignModal({
       if (actualTotalCount > 0) {
         const maxPage = Math.ceil(actualTotalCount / pageSize);
         console.log(
-          `[fetchAtsCandidates] Total: ${actualTotalCount}, MaxPage: ${maxPage}, CurrentPage: ${page}`
+          `[fetchAtsCandidates] Total: ${actualTotalCount}, MaxPage: ${maxPage}, CurrentPage: ${page}`,
         );
 
         // If requested page exceeds max, redirect to last page
         if (page > maxPage && page > 1) {
           console.log(
-            `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`
+            `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`,
           );
           setAtsPage(maxPage);
           await fetchAtsCandidates(jobId, maxPage, pageSize, actualTotalCount);
@@ -455,6 +491,7 @@ export default function CreateCampaignModal({
   useEffect(() => {
     if (open && initialValues) {
       setJobCode(initialValues.jobCode ?? "");
+      setJobId(initialValues.jobId ?? null);
       // Map legacy jobInfo (from drafts) to jobRole for continuity
       setJobRole(initialValues.jobInfo ?? "");
     }
@@ -519,30 +556,81 @@ export default function CreateCampaignModal({
 
     if (!API_BASE_URL || !TENANT_ID) {
       console.error(
-        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID"
+        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID",
       );
     }
 
     setSubmitting(true);
     try {
+      // Parse skills from comma-separated strings
+      const parsedPrimarySkills = primarySkills
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      const parsedFrontendSkills = frontendSkills
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      // Get the numeric job_id from the selected job if not manually set
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      const finalJobId = jobId || selectedJob?.id;
+
       const response = await fetch(`${API_BASE_URL}/api/v1/campaigns`, {
         method: "POST",
         headers: {
-          "X-Tenant-ID": TENANT_ID || "",
+          "tenant-id": TENANT_ID || "",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          // Basic Information
+          name: campaignName,
+          job_id: finalJobId,
+          job_code: jobCode,
           job_role: jobRole,
+          description: description,
+
+          // Company Details
           hiring_company_name: companyName,
-          job_location: location,
+          client_name: clientName,
+
+          // Job Details
+          job_type: jobType,
           work_mode: workMode,
-          min_experience: minExpNum,
-          max_experience: maxExpNum,
+          job_location: location,
+          multiple_locations:
+            multipleLocations.length > 0 ? multipleLocations : undefined,
+
+          // Compensation
           min_ctc: minCTCNum,
           max_ctc: maxCTCNum,
+
+          // Experience
+          min_experience: minExpNum,
+          max_experience: maxExpNum,
+
+          // Shift & Interview
+          shift_type: shiftType || undefined,
+          interview_mode: interviewMode || undefined,
+
+          // Walk-in Drive (conditional)
+          ...(isWalkinDrive && {
+            is_walkin_drive: true,
+            drive_date: driveDate,
+            drive_time: driveTime,
+            drive_location: driveLocation,
+          }),
+
+          // Voice Settings
+          voice_gender: voiceGender,
+
+          // Legacy fields
           negotiation_margin_percent: 10,
-          // Send textarea content directly; backend may accept string or object
-          job_details: jobDetails,
+          job_details: {
+            primary_skills: parsedPrimarySkills,
+            frontend_skills: parsedFrontendSkills,
+            role_type: jobRole,
+          },
           contact_email: email,
           contact_phone: phone,
         }),
@@ -560,15 +648,31 @@ export default function CreateCampaignModal({
       onCreated?.({ id: initialValues?.id, jobCode, jobInfo: jobRole });
 
       // Reset form
+      setCampaignName("");
+      setJobId(null);
       setJobCode("");
       setJobRole("");
+      setDescription("");
       setCompanyName("");
-      setLocation("");
+      setClientName("");
+      setJobType("full_time");
       setWorkMode("");
-      setMinExp("");
-      setMaxExp("");
+      setLocation("");
+      setMultipleLocations([]);
+      setLocationInput("");
       setMinCTC("");
       setMaxCTC("");
+      setMinExp("");
+      setMaxExp("");
+      setShiftType("");
+      setInterviewMode("");
+      setIsWalkinDrive(false);
+      setDriveDate("");
+      setDriveLocation("");
+      setDriveTime("");
+      setVoiceGender("female");
+      setPrimarySkills("");
+      setFrontendSkills("");
       setJobDetails("");
       setEmail("");
       setPhone("");
@@ -595,153 +699,438 @@ export default function CreateCampaignModal({
 
           <form
             onSubmit={handleSubmit}
-            className="space-y-6 mt-4 overflow-y-auto flex-1 pr-4"
+            className="space-y-8 mt-4 overflow-y-auto flex-1 pr-4"
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="jobCode">Job Code</Label>
-                <Combobox
-                  options={jobCodeOptions}
-                  value={jobCode}
-                  onValueChange={setJobCode}
-                  placeholder="Select job code"
-                  searchPlaceholder="Search by code, title, or company..."
-                  noResultsText="No job codes found."
-                  loading={jobsLoading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="jobRole">Job Role</Label>
-                <Input
-                  id="jobRole"
-                  type="text"
-                  placeholder="e.g., Senior Python Developer"
-                  value={jobRole}
-                  onChange={(e) => setJobRole(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="companyName">Company Name</Label>
-                <Input
-                  id="companyName"
-                  type="text"
-                  placeholder="e.g., Tech Corp Inc"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  type="text"
-                  placeholder="e.g., Bangalore"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Work Mode</Label>
-                <Select value={workMode} onValueChange={setWorkMode}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select work mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="office">Office</SelectItem>
-                    <SelectItem value="remote">Remote</SelectItem>
-                    <SelectItem value="hybrid">Hybrid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Experience (min - max years)</Label>
-                <div className="grid grid-cols-2 gap-2">
+            {/* Basic Information Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Basic Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="campaignName">Campaign Name *</Label>
                   <Input
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="Min"
-                    value={minExp}
-                    onChange={(e) => setMinExp(e.target.value)}
+                    id="campaignName"
+                    type="text"
+                    placeholder="e.g., Java FSE Hiring - Cognizant"
+                    value={campaignName}
+                    onChange={(e) => setCampaignName(e.target.value)}
                     required
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="jobId">Job ID</Label>
                   <Input
+                    id="jobId"
                     type="number"
-                    min={0}
-                    step={1}
-                    placeholder="Max"
-                    value={maxExp}
-                    onChange={(e) => setMaxExp(e.target.value)}
+                    placeholder="e.g., 123"
+                    value={jobId || ""}
+                    onChange={(e) =>
+                      setJobId(e.target.value ? Number(e.target.value) : null)
+                    }
+                  />
+                  <p className="text-xs text-gray-500">
+                    For ATS linking (optional)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="jobCode">Job Code</Label>
+                  <Combobox
+                    options={jobCodeOptions}
+                    value={jobCode}
+                    onValueChange={setJobCode}
+                    placeholder="Select job code"
+                    searchPlaceholder="Search by code, title, or company..."
+                    noResultsText="No job codes found."
+                    loading={jobsLoading}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="jobRole">Job Role *</Label>
+                  <Input
+                    id="jobRole"
+                    type="text"
+                    placeholder="e.g., Senior Python Developer"
+                    value={jobRole}
+                    onChange={(e) => setJobRole(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Additional description about the role..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Company Details Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Company Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="companyName">Hiring Company Name *</Label>
+                  <Input
+                    id="companyName"
+                    type="text"
+                    placeholder="e.g., Tech Corp Inc"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="clientName">Client Name *</Label>
+                  <Input
+                    id="clientName"
+                    type="text"
+                    placeholder="e.g., Cognizant Client"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
                     required
                   />
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label>CTC (in lakhs, min - max)</Label>
-                <div className="grid grid-cols-2 gap-2">
+            {/* Job Details Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Job Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Job Type *</Label>
+                  <Select value={jobType} onValueChange={setJobType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select job type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="full_time">Full-time</SelectItem>
+                      <SelectItem value="part_time">Part-time</SelectItem>
+                      <SelectItem value="contract">Contract</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Work Mode</Label>
+                  <Select value={workMode} onValueChange={setWorkMode}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select work mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="remote">Remote</SelectItem>
+                      <SelectItem value="onsite">Onsite</SelectItem>
+                      <SelectItem value="hybrid">Hybrid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="location">Primary Location</Label>
+                  <Input
+                    id="location"
+                    type="text"
+                    placeholder="e.g., Bangalore"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="locationInput">Multiple Locations</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="locationInput"
+                      type="text"
+                      placeholder="Add a city"
+                      value={locationInput}
+                      onChange={(e) => setLocationInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (
+                            locationInput.trim() &&
+                            !multipleLocations.includes(locationInput.trim())
+                          ) {
+                            setMultipleLocations([
+                              ...multipleLocations,
+                              locationInput.trim(),
+                            ]);
+                            setLocationInput("");
+                          }
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (
+                          locationInput.trim() &&
+                          !multipleLocations.includes(locationInput.trim())
+                        ) {
+                          setMultipleLocations([
+                            ...multipleLocations,
+                            locationInput.trim(),
+                          ]);
+                          setLocationInput("");
+                        }
+                      }}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                  {multipleLocations.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {multipleLocations.map((loc) => (
+                        <div
+                          key={loc}
+                          className="inline-flex items-center gap-2 bg-primary-100 text-primary-800 px-3 py-1 rounded-full text-sm"
+                        >
+                          {loc}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMultipleLocations(
+                                multipleLocations.filter((l) => l !== loc),
+                              )
+                            }
+                            className="text-primary-600 hover:text-primary-900"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Compensation Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Compensation
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Minimum CTC (in lakhs) *</Label>
                   <Input
                     type="number"
                     min={0}
                     step={0.5}
-                    placeholder="Min"
+                    placeholder="e.g., 5"
                     value={minCTC}
                     onChange={(e) => setMinCTC(e.target.value)}
                     required
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Maximum CTC (in lakhs) *</Label>
                   <Input
                     type="number"
                     min={0}
                     step={0.5}
-                    placeholder="Max"
+                    placeholder="e.g., 10"
                     value={maxCTC}
                     onChange={(e) => setMaxCTC(e.target.value)}
                     required
                   />
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="jobDetails">Job Details</Label>
-                <Textarea
-                  id="jobDetails"
-                  placeholder="Describe the role, responsibilities, required skills, etc."
-                  value={jobDetails}
-                  onChange={(e) => setJobDetails(e.target.value)}
-                  rows={4}
-                />
+            {/* Experience Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Experience
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Minimum Experience (years)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="e.g., 3"
+                    value={minExp}
+                    onChange={(e) => setMinExp(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Maximum Experience (years)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="e.g., 7"
+                    value={maxExp}
+                    onChange={(e) => setMaxExp(e.target.value)}
+                  />
+                </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Contact Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="hr@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
+            {/* Shift & Interview Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Shift & Interview
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Shift Type</Label>
+                  <Select value={shiftType} onValueChange={setShiftType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select shift type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Day</SelectItem>
+                      <SelectItem value="night">Night</SelectItem>
+                      <SelectItem value="rotational">Rotational</SelectItem>
+                      <SelectItem value="flexible">General/Flexible</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Interview Mode</Label>
+                  <Select
+                    value={interviewMode}
+                    onValueChange={setInterviewMode}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select interview mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="video">Video</SelectItem>
+                      <SelectItem value="telephonic">Telephonic</SelectItem>
+                      <SelectItem value="in_person">In-Person</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="phone">Contact Phone</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+919876543210"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
+            {/* Walk-in Drive Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Walk-in Drive
+              </h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isWalkinDrive"
+                    checked={isWalkinDrive}
+                    onChange={(e) => setIsWalkinDrive(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <Label
+                    htmlFor="isWalkinDrive"
+                    className="font-normal cursor-pointer"
+                  >
+                    This is a walk-in drive
+                  </Label>
+                </div>
+
+                {isWalkinDrive && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6 border-l-2 border-primary-200">
+                    <div className="space-y-2">
+                      <Label htmlFor="driveDate">Drive Date</Label>
+                      <Input
+                        id="driveDate"
+                        type="date"
+                        value={driveDate}
+                        onChange={(e) => setDriveDate(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="driveTime">Drive Time</Label>
+                      <Input
+                        id="driveTime"
+                        type="text"
+                        placeholder="e.g., 10:00 AM - 4:00 PM"
+                        value={driveTime}
+                        onChange={(e) => setDriveTime(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="driveLocation">
+                        Drive Location (Venue Address)
+                      </Label>
+                      <Textarea
+                        id="driveLocation"
+                        placeholder="Enter the venue address for the walk-in drive"
+                        value={driveLocation}
+                        onChange={(e) => setDriveLocation(e.target.value)}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Voice Settings Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Voice Settings
+              </h3>
+              <div className="space-y-3">
+                <Label>Voice Gender</Label>
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="voiceFemale"
+                      name="voiceGender"
+                      value="female"
+                      checked={voiceGender === "female"}
+                      onChange={(e) => setVoiceGender("female")}
+                      className="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <Label
+                      htmlFor="voiceFemale"
+                      className="font-normal cursor-pointer"
+                    >
+                      Female (default)
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="voiceMale"
+                      name="voiceGender"
+                      value="male"
+                      checked={voiceGender === "male"}
+                      onChange={(e) => setVoiceGender("male")}
+                      className="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <Label
+                      htmlFor="voiceMale"
+                      className="font-normal cursor-pointer"
+                    >
+                      Male
+                    </Label>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -761,6 +1150,12 @@ export default function CreateCampaignModal({
                 disabled={!jobCode && !jobRole}
               >
                 Save as Draft
+              </Button>
+              <Button
+                type="submit"
+                disabled={!jobCode || !jobRole || submitting}
+              >
+                {submitting ? "Creating..." : "Create Campaign"}
               </Button>
             </div>
           </form>
@@ -877,7 +1272,7 @@ export default function CreateCampaignModal({
                         className="h-6 px-1 text-gray-500 hover:text-gray-700"
                         onClick={() =>
                           setManualResumes((prev) =>
-                            prev.filter((_, idx) => idx !== i)
+                            prev.filter((_, idx) => idx !== i),
                           )
                         }
                       >
@@ -1030,7 +1425,7 @@ export default function CreateCampaignModal({
               onChange={(e) => {
                 setUploadError("");
                 const files = Array.from(e.target.files ?? []).filter(
-                  isAccepted
+                  isAccepted,
                 );
                 if (files.length > 50) {
                   setUploadError("You can upload a maximum of 50 files.");
@@ -1051,7 +1446,7 @@ export default function CreateCampaignModal({
                 e.stopPropagation();
                 setUploadError("");
                 let files = Array.from(e.dataTransfer.files ?? []).filter(
-                  isAccepted
+                  isAccepted,
                 );
                 if (files.length === 0) return;
                 const combined = [...bulkFiles, ...files];
@@ -1108,7 +1503,7 @@ export default function CreateCampaignModal({
                       className="h-6 px-1 text-gray-500 hover:text-gray-700"
                       onClick={() =>
                         setBulkFiles((prev) =>
-                          prev.filter((_, idx) => idx !== i)
+                          prev.filter((_, idx) => idx !== i),
                         )
                       }
                     >
@@ -1143,10 +1538,10 @@ export default function CreateCampaignModal({
                     if (bulkFiles.length === 0) return;
                     setManualResumes((prev) => {
                       const existingKeys = new Set(
-                        prev.map((f) => `${f.name}-${f.size}`)
+                        prev.map((f) => `${f.name}-${f.size}`),
                       );
                       const toAdd = bulkFiles.filter(
-                        (f) => !existingKeys.has(`${f.name}-${f.size}`)
+                        (f) => !existingKeys.has(`${f.name}-${f.size}`),
                       );
                       return [...toAdd, ...prev];
                     });
@@ -1277,8 +1672,8 @@ export default function CreateCampaignModal({
                         (atsCandidates.length > 0 &&
                           atsCandidates.every((candidate, idx) =>
                             selectedCandidates.has(
-                              getCandidateKey(candidate, idx)
-                            )
+                              getCandidateKey(candidate, idx),
+                            ),
                           ))
                       }
                       onChange={(e) => {
@@ -1304,8 +1699,8 @@ export default function CreateCampaignModal({
                             atsTotalCount ? ` (${atsTotalCount})` : ""
                           } selected`
                         : selectedCandidates.size > 0
-                        ? `${selectedCandidates.size} selected`
-                        : "Select all"}
+                          ? `${selectedCandidates.size} selected`
+                          : "Select all"}
                     </span>
                   </div>
                   {(selectAllPages || selectedCandidates.size > 0) && (
@@ -1384,7 +1779,7 @@ export default function CreateCampaignModal({
                             .filter(Boolean)
                             .map((v: string) => v.toLowerCase());
                           return fields.some((field: string) =>
-                            field.includes(q)
+                            field.includes(q),
                           );
                         })
                         .map((candidate: any, idx: number) => {
@@ -1422,7 +1817,7 @@ export default function CreateCampaignModal({
                               <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
                                 {candidate.submission_on
                                   ? new Date(
-                                      candidate.submission_on
+                                      candidate.submission_on,
                                     ).toLocaleDateString("en-US", {
                                       month: "short",
                                       day: "numeric",
@@ -1500,7 +1895,7 @@ export default function CreateCampaignModal({
                             await fetchAtsCandidates(
                               jobId,
                               newPage,
-                              atsPageSize
+                              atsPageSize,
                             );
                         }}
                       >
@@ -1526,7 +1921,7 @@ export default function CreateCampaignModal({
                             await fetchAtsCandidates(
                               jobId,
                               newPage,
-                              atsPageSize
+                              atsPageSize,
                             );
                         }}
                       >
@@ -1575,7 +1970,7 @@ export default function CreateCampaignModal({
                   const selected = selectAllPages
                     ? atsCandidates
                     : atsCandidates.filter((candidate, idx) =>
-                        selectedCandidates.has(getCandidateKey(candidate, idx))
+                        selectedCandidates.has(getCandidateKey(candidate, idx)),
                       );
                   console.log("Importing candidates:", selected);
                   // For now, just close the modal
@@ -1589,8 +1984,8 @@ export default function CreateCampaignModal({
                     ? `(${atsTotalCount})`
                     : "(All)"
                   : selectedCandidates.size > 0
-                  ? `(${selectedCandidates.size})`
-                  : "Selected"}
+                    ? `(${selectedCandidates.size})`
+                    : "Selected"}
               </Button>
             </div>
           </div>

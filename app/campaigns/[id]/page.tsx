@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
   Mail,
@@ -24,10 +24,12 @@ import CandidatesTable, {
 
 export default function CampaignDetailPage() {
   const params = useParams();
-  const campaignId = parseInt(params.id as string);
+  const router = useRouter();
+  const campaignId = params.id as string; // Keep as string for UUID support
 
   const [campaign, setCampaign] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [candidates, setCandidates] = useState<CandidateRow[]>([
     {
@@ -132,14 +134,132 @@ export default function CampaignDetailPage() {
     },
   ]);
 
+  // Get auth token on mount
   useEffect(() => {
-    // Find the campaign with the matching ID
-    const foundCampaign = campaignData.campaigns.find(
-      (camp: any) => camp.id === campaignId
-    );
-    setCampaign(foundCampaign);
-    setLoading(false);
-  }, [campaignId]);
+    try {
+      const stored =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("auth-token")
+          : null;
+      if (stored) {
+        setAuthToken(stored);
+      }
+    } catch (e) {
+      console.error("[CampaignDetailPage] Error reading auth token:", e);
+    }
+  }, []);
+
+  // Fetch campaign data from API or fallback to static data
+  useEffect(() => {
+    const fetchCampaign = async () => {
+      // First, try to find in static data by numeric ID
+      const numericId = parseInt(campaignId);
+      if (!isNaN(numericId)) {
+        const foundCampaign = campaignData.campaigns.find(
+          (camp: any) => camp.id === numericId,
+        );
+        if (foundCampaign) {
+          console.log(
+            "[CampaignDetailPage] Found in static data:",
+            foundCampaign,
+          );
+          setCampaign(foundCampaign);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // For UUID campaigns, wait for auth token before trying API
+      if (!authToken) {
+        console.log("[CampaignDetailPage] Waiting for auth token...");
+        return;
+      }
+
+      // Try API with auth token
+      try {
+        setLoading(true);
+        const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+        console.log("[CampaignDetailPage] Fetching campaign:", {
+          campaignId,
+          TENANT_ID,
+          hasToken: !!authToken,
+        });
+
+        if (!TENANT_ID) {
+          console.error("[CampaignDetailPage] Missing TENANT_ID");
+          setCampaign(null);
+          setLoading(false);
+          return;
+        }
+
+        // Use Next.js API route as proxy to avoid CORS issues
+        const response = await fetch(`/api/campaigns/${campaignId}`, {
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+
+        console.log(
+          "[CampaignDetailPage] Response status:",
+          response.status,
+          response.statusText,
+        );
+
+        // Check content-type but try parsing anyway
+        const contentType = response.headers.get("content-type");
+        console.log("[CampaignDetailPage] Content-Type:", contentType);
+
+        let responseData;
+        try {
+          const responseText = await response.text();
+          console.log("[CampaignDetailPage] Raw response:", responseText);
+          responseData = responseText ? JSON.parse(responseText) : {};
+          console.log(
+            "[CampaignDetailPage] Parsed API response:",
+            responseData,
+          );
+        } catch (parseError) {
+          console.error(
+            "[CampaignDetailPage] Failed to parse JSON:",
+            parseError,
+          );
+          setCampaign(null);
+          setLoading(false);
+          return;
+        }
+
+        if (response.ok) {
+          // Extract campaign data from nested response structure
+          const fetchedCampaign = responseData.data || responseData;
+          console.log(
+            "[CampaignDetailPage] Extracted campaign:",
+            fetchedCampaign,
+          );
+          setCampaign(fetchedCampaign);
+        } else {
+          console.error(
+            "[CampaignDetailPage] API returned error status:",
+            response.status,
+          );
+          console.error(
+            "[CampaignDetailPage] Error response data:",
+            responseData,
+          );
+          setCampaign(null);
+        }
+      } catch (error) {
+        console.error("[CampaignDetailPage] Error fetching campaign:", error);
+        setCampaign(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCampaign();
+  }, [campaignId, authToken]);
 
   if (loading) {
     return (
@@ -170,13 +290,24 @@ export default function CampaignDetailPage() {
     }
   };
 
+  // Map API status to display status
+  const getDisplayStatus = (status: string) => {
+    if (status === "active") return "Running";
+    if (status === "draft") return "Paused";
+    return status;
+  };
+
+  const displayStatus = campaign?.status
+    ? getDisplayStatus(campaign.status)
+    : "Unknown";
+
   const statusStyles: Record<string, { container: string; dot: string }> = {
     Running: { container: "bg-green-50 text-green-700", dot: "bg-green-500" },
     Closed: { container: "bg-red-50 text-red-700", dot: "bg-red-500" },
     Paused: { container: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
   };
 
-  const statusClass = statusStyles[campaign.status] || {
+  const statusClass = statusStyles[displayStatus] || {
     container: "bg-gray-50 text-gray-700",
     dot: "bg-gray-500",
   };
@@ -192,13 +323,19 @@ export default function CampaignDetailPage() {
             <div className="mb-8">
               <div className="flex items-center gap-4 mb-4">
                 <div
-                  className={`w-14 h-14 ${campaign.iconBg} rounded-xl flex items-center justify-center`}
+                  className={`w-14 h-14 ${
+                    campaign.iconBg || "bg-primary-100"
+                  } rounded-xl flex items-center justify-center`}
                 >
-                  {getIconComponent(campaign.icon)}
+                  {campaign.icon ? (
+                    getIconComponent(campaign.icon)
+                  ) : (
+                    <Mail className="w-5 h-5 text-white" />
+                  )}
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">
-                    {campaign.name}
+                    {campaign.name || campaign.job_role || "Campaign Details"}
                   </h1>
                   <div className="flex items-center gap-3 mt-2">
                     <span
@@ -207,28 +344,32 @@ export default function CampaignDetailPage() {
                       <span
                         className={`w-2 h-2 rounded-full ${statusClass.dot}`}
                       ></span>
-                      {campaign.status}
+                      {displayStatus}
                     </span>
                     <span className="text-gray-600">
-                      {campaign.messagesCount} messages
+                      {campaign.messagesCount || 0} messages
                     </span>
                     <span className="text-gray-600">
-                      {campaign.actionsCount} actions
+                      {campaign.actionsCount || 0} actions
                     </span>
                   </div>
                 </div>
               </div>
-              <p className="text-gray-600 max-w-2xl">{campaign.description}</p>
+              <p className="text-gray-600 max-w-2xl">
+                {campaign.description || "No description available"}
+              </p>
             </div>
 
             {/* Tags */}
-            <div className="flex flex-wrap gap-2 mb-8">
-              {campaign.tags.map((tag: string, index: number) => (
-                <Badge key={index} variant="secondary" className="px-3 py-1">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
+            {campaign.tags && campaign.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-8">
+                {campaign.tags.map((tag: string, index: number) => (
+                  <Badge key={index} variant="secondary" className="px-3 py-1">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            )}
 
             {/* Metrics Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -241,10 +382,10 @@ export default function CampaignDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {campaign.metrics.delivered}
+                    {campaign.metrics?.delivered || "0"}
                   </div>
                   <p className="text-xs text-gray-500">
-                    {campaign.metrics.deliveredPeriod}
+                    {campaign.metrics?.deliveredPeriod || "No data"}
                   </p>
                 </CardContent>
               </Card>
@@ -256,10 +397,10 @@ export default function CampaignDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {campaign.metrics.opened}
+                    {campaign.metrics?.opened || "0"}
                   </div>
                   <p className="text-xs text-gray-500">
-                    {campaign.metrics.openedPeriod}
+                    {campaign.metrics?.openedPeriod || "No data"}
                   </p>
                 </CardContent>
               </Card>
@@ -271,10 +412,10 @@ export default function CampaignDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {campaign.metrics.clicked}
+                    {campaign.metrics?.clicked || "0"}
                   </div>
                   <p className="text-xs text-gray-500">
-                    {campaign.metrics.clickedPeriod}
+                    {campaign.metrics?.clickedPeriod || "No data"}
                   </p>
                 </CardContent>
               </Card>
@@ -288,20 +429,13 @@ export default function CampaignDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    {campaign.metrics.converted}
+                    {campaign.metrics?.converted || "0"}
                   </div>
                   <p className="text-xs text-gray-500">
-                    {campaign.metrics.convertedPeriod}
+                    {campaign.metrics?.convertedPeriod || "No data"}
                   </p>
                 </CardContent>
               </Card>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-4">
-              <Button variant="default">Edit Campaign</Button>
-              <Button variant="outline">View Analytics</Button>
-              <Button variant="outline">Export Data</Button>
             </div>
 
             {/* Candidates Table */}

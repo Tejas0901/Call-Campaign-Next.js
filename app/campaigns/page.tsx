@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import MainLayout from "@/components/layouts/MainLayout";
 import CampaignCard from "@/components/CampaignCard";
 import DraftCard from "@/components/DraftCard";
+import MigrationCard from "@/components/MigrationCard";
 import CreateCampaignModal from "@/components/CreateCampaignModal";
 import { campaignData } from "@/data/campaignData";
 import { Plus, ChevronDown } from "lucide-react";
+import { useCampaigns } from "@/hooks/useCampaigns";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,8 +39,11 @@ type Draft = {
 };
 
 export default function Campaigns() {
+  const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [view, setView] = useState<"active" | "archived" | "drafts">("active");
+  const [view, setView] = useState<
+    "active" | "archived" | "drafts" | "migrations"
+  >("active");
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -48,13 +54,25 @@ export default function Campaigns() {
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [hyrexToken, setHyrexToken] = useState<string | null>(null);
+  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+
+  const {
+    campaigns: fetchedCampaigns,
+    loading: campaignsLoading,
+    error: campaignsError,
+    fetchCampaigns,
+  } = useCampaigns(authToken);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
 
   useEffect(() => {
-    // Restore Hyrex token and drafts
+    // Restore Hyrex token and drafts, and auth token for migrations
     try {
       if (typeof window !== "undefined") {
         const savedToken = window.localStorage.getItem("hyrex-auth-token");
         if (savedToken) setHyrexToken(savedToken);
+
+        const savedAuthToken = window.localStorage.getItem("auth-token");
+        if (savedAuthToken) setAuthToken(savedAuthToken);
       }
 
       const raw =
@@ -67,6 +85,18 @@ export default function Campaigns() {
       setDrafts([]);
     }
   }, []);
+
+  // Fetch campaigns when auth token is available
+  useEffect(() => {
+    if (authToken && !campaignsLoading) {
+      fetchCampaigns();
+    }
+  }, [authToken]);
+
+  // Update campaigns when fetched
+  useEffect(() => {
+    setCampaigns(fetchedCampaigns);
+  }, [fetchedCampaigns]);
 
   const deleteDraft = (id: string) => {
     try {
@@ -132,7 +162,7 @@ export default function Campaigns() {
         const stored = window.localStorage.getItem("hyrex-auth-token");
         console.log(
           "[Token Verification] Token stored and retrieved:",
-          !!stored
+          !!stored,
         );
       }
       setHyrexToken(token);
@@ -248,6 +278,19 @@ export default function Campaigns() {
             {drafts.length.toString().padStart(2, "0")}
           </span>
         </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium ${
+            view === "migrations"
+              ? "text-primary-600 border-b-2 border-primary-600"
+              : "text-gray-600 hover:text-gray-900"
+          }`}
+          onClick={() => {
+            setView("migrations");
+            router.push("/campaigns/migrations");
+          }}
+        >
+          Migrations{" "}
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-3 mb-6">
@@ -298,6 +341,42 @@ export default function Campaigns() {
               />
             ))
           )}
+        </div>
+      )}
+
+      {view === "migrations" && (
+        <div className="space-y-4">
+          {campaignsLoading && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                <p className="text-gray-600 text-sm">Loading campaigns...</p>
+              </div>
+            </div>
+          )}
+
+          {campaignsError && !campaignsLoading && (
+            <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+              <p className="text-sm text-red-700 font-medium">Error</p>
+              <p className="text-sm text-red-600 mt-1">{campaignsError}</p>
+            </div>
+          )}
+
+          {!campaignsLoading && campaigns.length === 0 && (
+            <div className="text-gray-600">
+              No campaigns found. Create one to get started!
+            </div>
+          )}
+
+          {!campaignsLoading &&
+            campaigns.length > 0 &&
+            campaigns.map((campaign) => (
+              <MigrationCard
+                key={campaign.id}
+                campaign={campaign}
+                onView={(id) => router.push(`/campaigns/migrations/${id}`)}
+              />
+            ))}
         </div>
       )}
 

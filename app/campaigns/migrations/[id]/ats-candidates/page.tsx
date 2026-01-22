@@ -6,22 +6,24 @@ import { ArrowLeft, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchAtsCandidatesShared } from "@/lib/ats-candidates";
+import { filterJobsByCode } from "@/lib/api-integrations";
 
-interface Draft {
+interface Campaign {
   id: string;
-  jobCode: string;
-  jobInfo: string;
+  job_code: string;
+  job_role: string;
   jobId?: number;
-  savedAt: string;
 }
 
-export default function AtsCandidatesPage() {
+export default function MigrationAtsCandidatesPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const draftId = params.id as string;
+  const campaignId = params.id as string;
 
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [jobId, setJobId] = useState<number | null>(null);
   const [atsCandidates, setAtsCandidates] = useState<any[]>([]);
   const [atsCandidatesLoading, setAtsCandidatesLoading] = useState(false);
   const [atsCandidatesError, setAtsCandidatesError] = useState("");
@@ -34,35 +36,80 @@ export default function AtsCandidatesPage() {
   );
   const [selectAllPages, setSelectAllPages] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID || null;
+  const [hyrexAuthToken, setHyrexAuthToken] = useState<string | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+  const TENANT_ID =
+    process.env.NEXT_PUBLIC_TENANT_ID || "550e8400-e29b-41d4-a716-446655440000";
 
-  useEffect(() => {
-    try {
-      const raw =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("campaignDrafts")
-          : null;
-      const parsed = raw ? JSON.parse(raw) : [];
-      const found = Array.isArray(parsed)
-        ? parsed.find((d: Draft) => d.id === draftId)
-        : null;
-      setDraft(found || null);
-    } catch (e) {
-      setDraft(null);
-    }
-  }, [draftId]);
-
+  // Get auth tokens
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const stored = window.localStorage.getItem("hyrex-auth-token");
-    if (stored) setAuthToken(stored);
+    const appToken = window.localStorage.getItem("auth-token");
+    const hyrexToken = window.localStorage.getItem("hyrex-auth-token");
+    if (appToken) setAuthToken(appToken);
+    if (hyrexToken) setHyrexAuthToken(hyrexToken);
   }, []);
 
+  // Fetch campaign data
   useEffect(() => {
-    if (draft?.jobId && authToken) {
-      fetchAtsCandidates(draft.jobId, 1);
+    const fetchCampaign = async () => {
+      if (!authToken) return;
+
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/campaigns/${campaignId}`, {
+          headers: {
+            "tenant-id": TENANT_ID || "",
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+
+        if (response.ok) {
+          const responseData = await response.json();
+          const fetchedCampaign = responseData.data || responseData;
+          setCampaign(fetchedCampaign);
+        } else {
+          console.error("Failed to fetch campaign:", response.status);
+          setCampaign(null);
+        }
+      } catch (error) {
+        console.error("Error fetching campaign:", error);
+        setCampaign(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCampaign();
+  }, [campaignId, authToken]);
+
+  // Fetch job_id from job_code
+  useEffect(() => {
+    const fetchJobId = async () => {
+      const jobCode = campaign?.job_code;
+      if (!jobCode || !hyrexAuthToken) return;
+
+      try {
+        const response = await filterJobsByCode(jobCode, hyrexAuthToken);
+        if (response.results && response.results.length > 0) {
+          setJobId(response.results[0].id);
+        }
+      } catch (error) {
+        console.error("Error fetching job_id:", error);
+      }
+    };
+
+    fetchJobId();
+  }, [campaign?.job_code, hyrexAuthToken]);
+
+  // Fetch ATS candidates when we have jobId
+  useEffect(() => {
+    if (jobId && hyrexAuthToken) {
+      fetchAtsCandidates(jobId, 1);
     }
-  }, [draft?.jobId, authToken]);
+  }, [jobId, hyrexAuthToken]);
 
   const getStoredAuthFormat = (): string => {
     if (typeof window !== "undefined") {
@@ -105,7 +152,7 @@ export default function AtsCandidatesPage() {
         jobId,
         page,
         pageSize,
-        authToken,
+        authToken: hyrexAuthToken,
         tenantId: TENANT_ID,
         getStoredAuthFormat,
         setStoredAuthFormat,
@@ -134,7 +181,7 @@ export default function AtsCandidatesPage() {
         }
       }
     } catch (err: any) {
-      console.error("[AtsCandidates] ATS fetch error", err);
+      console.error("[MigrationAtsCandidates] ATS fetch error", err);
       setAtsCandidatesError(err?.message || "Failed to fetch candidates");
       setAtsCandidates([]);
     } finally {
@@ -142,7 +189,7 @@ export default function AtsCandidatesPage() {
     }
   };
 
-  const importSelectedCandidates = () => {
+  const importSelectedCandidates = async () => {
     const selected = selectAllPages
       ? atsCandidates
       : atsCandidates.filter((candidate, idx) =>
@@ -151,23 +198,118 @@ export default function AtsCandidatesPage() {
 
     if (selected.length === 0) return;
 
-    // Store selected candidates in sessionStorage for draft page to pick up
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(
-        `ats-candidates-${draftId}`,
-        JSON.stringify(selected),
+    setImportLoading(true);
+    setImportError("");
+
+    // Basic validation: phone number is required by the API
+    const missingPhone = selected.filter(
+      (candidate) => !candidate.candidate_mobile,
+    );
+    if (missingPhone.length > 0) {
+      setImportLoading(false);
+      setImportError(
+        "At least one selected candidate is missing a phone number. Please ensure phone_number is present before importing.",
       );
+      return;
     }
 
-    // Close and return to draft
-    router.back();
+    try {
+      // Prepare contacts data in the format expected by the API
+      const contactsPayload = selected.map((candidate) => ({
+        candidate_name:
+          candidate.candidate_name ||
+          candidate.candidate_email ||
+          candidate.candidate_mobile ||
+          "Unknown Candidate",
+        phone_number: candidate.candidate_mobile || "",
+        email: candidate.candidate_email || "",
+        ats_candidate_id:
+          candidate.candidate_id || candidate.submission_id || "",
+        // Optional enrichment fields if available from ATS
+        ...(candidate.experience_years && {
+          experience_years: candidate.experience_years,
+        }),
+        ...(candidate.current_ctc && { current_ctc: candidate.current_ctc }),
+        ...(candidate.expected_ctc && { expected_ctc: candidate.expected_ctc }),
+        ...(candidate.notice_period_days && {
+          notice_period_days: candidate.notice_period_days,
+        }),
+        // Pack any remaining useful context so backend can choose to store it
+        candidate_context: {
+          job_code: candidate.job_code || campaign?.job_code || "",
+          job_title: candidate.job_title || campaign?.job_role || "",
+          location: candidate.candidate_location || "",
+          submitted_by: candidate.submitted_by_name || "",
+          submission_date: candidate.submission_on || new Date().toISOString(),
+        },
+      }));
+
+      const apiBaseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL ||
+        "https://celsa-heptavalent-pseudohistorically.ngrok-free.dev";
+
+      // Call the API endpoint
+      const response = await fetch(
+        `${apiBaseUrl}/api/v1/contacts/bulk/${campaignId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID || "",
+            ...(authToken && { Authorization: `Bearer ${authToken}` }),
+          },
+          body: JSON.stringify({ contacts: contactsPayload }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.message ||
+            errorData.error ||
+            `Failed to import candidates (${response.status})`,
+        );
+      }
+
+      const result = await response.json();
+      console.log("[importSelectedCandidates] Success:", result);
+
+      // Store selected candidates in sessionStorage as backup
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          `ats-candidates-${campaignId}`,
+          JSON.stringify(selected),
+        );
+      }
+
+      // Close and return to campaign
+      router.back();
+    } catch (error: any) {
+      console.error("[importSelectedCandidates] Error:", error);
+      setImportError(
+        error?.message || "Failed to import candidates. Please try again.",
+      );
+    } finally {
+      setImportLoading(false);
+    }
   };
 
-  if (!draft) {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+          <p className="text-gray-600 text-sm">Loading campaign...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!campaign) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Draft not found</p>
+          <p className="text-gray-600 mb-4">Campaign not found</p>
           <Button onClick={() => router.back()} variant="outline">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Go Back
@@ -185,7 +327,7 @@ export default function AtsCandidatesPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">ATS Candidates</h1>
             <p className="text-sm text-gray-600 mt-1">
-              {draft.jobInfo} ({draft.jobCode})
+              {campaign.job_role} ({campaign.job_code})
             </p>
           </div>
           <Button onClick={() => router.back()} variant="ghost" size="sm">
@@ -330,6 +472,9 @@ export default function AtsCandidatesPage() {
                         Candidate
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                        ATS Candidate ID
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
                         Mobile
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
@@ -415,6 +560,18 @@ export default function AtsCandidatesPage() {
                                 </div>
                               )}
                             </td>
+                            <td className="px-4 py-3 text-gray-700 text-xs font-mono">
+                              {candidate.candidate_id ? (
+                                <span
+                                  title={candidate.candidate_id}
+                                  className="truncate max-w-xs block"
+                                >
+                                  {candidate.candidate_id}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
                             <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
                               {candidate.candidate_mobile || "—"}
                             </td>
@@ -470,12 +627,8 @@ export default function AtsCandidatesPage() {
                       onClick={async () => {
                         const newPage = atsPage - 1;
                         setAtsPage(newPage);
-                        if (draft?.jobId)
-                          await fetchAtsCandidates(
-                            draft.jobId,
-                            newPage,
-                            atsPageSize,
-                          );
+                        if (jobId)
+                          await fetchAtsCandidates(jobId, newPage, atsPageSize);
                       }}
                     >
                       Previous
@@ -494,12 +647,8 @@ export default function AtsCandidatesPage() {
                       onClick={async () => {
                         const newPage = atsPage + 1;
                         setAtsPage(newPage);
-                        if (draft?.jobId)
-                          await fetchAtsCandidates(
-                            draft.jobId,
-                            newPage,
-                            atsPageSize,
-                          );
+                        if (jobId)
+                          await fetchAtsCandidates(jobId, newPage, atsPageSize);
                       }}
                     >
                       Next
@@ -510,28 +659,51 @@ export default function AtsCandidatesPage() {
             )}
 
             {/* Action Buttons */}
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => router.back()}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={!selectAllPages && selectedCandidates.size === 0}
-                onClick={importSelectedCandidates}
-              >
-                Import
-                {selectAllPages
-                  ? atsTotalCount > 0
-                    ? ` (${atsTotalCount})`
-                    : " (All)"
-                  : selectedCandidates.size > 0
-                    ? ` (${selectedCandidates.size})`
-                    : ""}
-              </Button>
+            <div className="mt-4 space-y-3">
+              {importError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+                  <p className="text-sm text-red-700 font-medium">
+                    Import Failed
+                  </p>
+                  <p className="text-sm text-red-600 mt-1">{importError}</p>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.back()}
+                  disabled={importLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  disabled={
+                    (!selectAllPages && selectedCandidates.size === 0) ||
+                    importLoading
+                  }
+                  onClick={importSelectedCandidates}
+                >
+                  {importLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      Import
+                      {selectAllPages
+                        ? atsTotalCount > 0
+                          ? ` (${atsTotalCount})`
+                          : " (All)"
+                        : selectedCandidates.size > 0
+                          ? ` (${selectedCandidates.size})`
+                          : ""}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </>
         )}
