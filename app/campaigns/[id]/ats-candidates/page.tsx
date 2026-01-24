@@ -1,12 +1,13 @@
 "use client";
 
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import { SearchBox } from "@/components/ui/search-box";
+import { HyrexLoginDialog } from "@/components/hyrex/HyrexLoginDialog";
 
 interface Campaign {
   id: string;
@@ -35,6 +36,8 @@ export default function AtsCandidatesPage() {
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const retryActionRef = useRef<(() => void) | null>(null);
+  const [showHyrexLogin, setShowHyrexLogin] = useState(false);
 
   // Get auth token on mount
   useEffect(() => {
@@ -50,6 +53,12 @@ export default function AtsCandidatesPage() {
       console.error("[AtsCandidatesPage] Error reading auth token:", e);
     }
   }, []);
+
+  useEffect(() => {
+    if (!authToken) {
+      setShowHyrexLogin(true);
+    }
+  }, [authToken]);
 
   // Fetch campaign data to get job code
   useEffect(() => {
@@ -111,6 +120,19 @@ export default function AtsCandidatesPage() {
     }
   };
 
+  const requestHyrexLogin = (retryAction?: () => void) => {
+    retryActionRef.current = retryAction || null;
+    setShowHyrexLogin(true);
+  };
+
+  const handleLoginSuccess = (token: string) => {
+    setAuthToken(token);
+    const retry = retryActionRef.current;
+    retryActionRef.current = null;
+    setShowHyrexLogin(false);
+    if (retry) retry();
+  };
+
   // Fetch numeric job_id from job_code
   const fetchJobId = async (jobCode: string) => {
     try {
@@ -124,6 +146,7 @@ export default function AtsCandidatesPage() {
       if (!token) {
         console.warn("[AtsCandidatesPage] No token available for fetchJobId!");
         setAtsCandidatesError("No authentication token available");
+        requestHyrexLogin(() => fetchJobId(jobCode));
         return;
       }
 
@@ -142,6 +165,8 @@ export default function AtsCandidatesPage() {
         },
       );
 
+      let unauthorized = response.status === 401;
+
       console.log(
         "[AtsCandidatesPage] Job lookup response status:",
         response.status,
@@ -159,10 +184,14 @@ export default function AtsCandidatesPage() {
             headers,
           },
         );
+        unauthorized = response.status === 401;
       }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (unauthorized) {
+          requestHyrexLogin(() => fetchJobId(jobCode));
+        }
         throw new Error(errorData?.error || "Failed to fetch job_id");
       }
 
@@ -211,6 +240,9 @@ export default function AtsCandidatesPage() {
         );
       } else {
         console.warn("[AtsCandidatesPage] No token available for API call!");
+        requestHyrexLogin(() => fetchAtsCandidates(jobId, page, pageSize));
+        setAtsCandidatesLoading(false);
+        return;
       }
 
       let response = await fetch(
@@ -224,6 +256,8 @@ export default function AtsCandidatesPage() {
         "[AtsCandidatesPage] Submissions API response status:",
         response.status,
       );
+
+      let unauthorized = response.status === 401;
 
       if (response.status === 401 && token) {
         console.warn(
@@ -241,10 +275,14 @@ export default function AtsCandidatesPage() {
           "[AtsCandidatesPage] Retry with Token format, status:",
           response.status,
         );
+        unauthorized = response.status === 401;
       }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (unauthorized) {
+          requestHyrexLogin(() => fetchAtsCandidates(jobId, page, pageSize));
+        }
         throw new Error(errorData?.error || "Failed to fetch candidates");
       }
 

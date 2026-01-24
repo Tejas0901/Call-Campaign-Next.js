@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import MainLayout from "@/components/layouts/MainLayout";
 import CampaignCard from "@/components/CampaignCard";
@@ -20,16 +20,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { HyrexLoginDialog } from "@/components/hyrex/HyrexLoginDialog";
 
 type Draft = {
   id: string;
@@ -49,12 +41,9 @@ export default function Campaigns() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [draftToDelete, setDraftToDelete] = useState<string | null>(null);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
   const [hyrexToken, setHyrexToken] = useState<string | null>(null);
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const [pendingAction, setPendingAction] = useState<"create" | null>(null);
 
   const {
     campaigns: fetchedCampaigns,
@@ -127,52 +116,11 @@ export default function Campaigns() {
   const handleCreateClick = () => {
     if (hyrexToken) {
       setIsModalOpen(true);
-    } else {
-      setShowLoginDialog(true);
+      return;
     }
-  };
 
-  const handleHyrexLogin = async (e: FormEvent) => {
-    e.preventDefault();
-    setLoginError("");
-    setLoginLoading(true);
-    try {
-      const response = await fetch("/api/hyrex/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
-      });
-
-      const data = await response.json();
-      console.log("[Login Response]", { status: response.status, data });
-
-      if (!response.ok) {
-        throw new Error(data?.message || data?.error || "Login failed");
-      }
-
-      const token = data?.token;
-      if (!token) {
-        console.error("[Login Error] No token in response", data);
-        throw new Error("Login succeeded but token is missing in response");
-      }
-
-      console.log("[Login Success] Storing token in localStorage");
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("hyrex-auth-token", token);
-        const stored = window.localStorage.getItem("hyrex-auth-token");
-        console.log(
-          "[Token Verification] Token stored and retrieved:",
-          !!stored,
-        );
-      }
-      setHyrexToken(token);
-      setShowLoginDialog(false);
-      setIsModalOpen(true);
-    } catch (err: any) {
-      setLoginError(err?.message || "Unable to login. Please try again.");
-    } finally {
-      setLoginLoading(false);
-    }
+    setPendingAction("create");
+    setShowLoginDialog(true);
   };
 
   return (
@@ -194,52 +142,21 @@ export default function Campaigns() {
         authToken={hyrexToken || undefined}
       />
 
-      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Login to Hyrex</DialogTitle>
-            <DialogDescription>
-              Enter your Hyrex credentials to fetch job codes.
-            </DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={handleHyrexLogin}>
-            <div className="space-y-2">
-              <Label htmlFor="hyrexEmail">Email</Label>
-              <Input
-                id="hyrexEmail"
-                type="email"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="hyrexPassword">Password</Label>
-              <Input
-                id="hyrexPassword"
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                required
-              />
-            </div>
-            {loginError && <p className="text-sm text-red-600">{loginError}</p>}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowLoginDialog(false)}
-                disabled={loginLoading}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={loginLoading}>
-                {loginLoading ? "Logging in..." : "Login"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <HyrexLoginDialog
+        open={showLoginDialog}
+        onOpenChange={(open) => {
+          setShowLoginDialog(open);
+          if (!open) setPendingAction(null);
+        }}
+        onSuccess={(token) => {
+          setHyrexToken(token);
+          if (pendingAction === "create") {
+            setIsModalOpen(true);
+          }
+          setPendingAction(null);
+        }}
+        description="Enter your Hyrex credentials to fetch job codes."
+      />
 
       <div className="flex gap-2 mb-6 pb-4 border-b border-gray-200">
         <button

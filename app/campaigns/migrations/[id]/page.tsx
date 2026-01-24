@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Mail,
   MessageSquare,
@@ -9,7 +9,13 @@ import {
   MousePointerClick,
   ShoppingCart,
   ArrowLeft,
+  Music,
+  Loader2,
+  Play,
+  Pause,
+  Square,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { campaignData } from "@/data/campaignData";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +28,13 @@ import CandidatesTable, {
 import AddCandidatesWorkflow from "@/components/campaigns/AddCandidatesWorkflow";
 import { filterJobsByCode } from "@/lib/api-integrations";
 import { SearchBox } from "@/components/ui/search-box";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function MigrationDetailPage() {
   const params = useParams();
@@ -38,6 +51,23 @@ export default function MigrationDetailPage() {
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [candidatesError, setCandidatesError] = useState<string | null>(null);
   const [candidateSearch, setCandidateSearch] = useState("");
+  const [showScriptsDialog, setShowScriptsDialog] = useState(false);
+  const [audioGenerating, setAudioGenerating] = useState(false);
+  const [showAudioPreviewDialog, setShowAudioPreviewDialog] = useState(false);
+  const [audioScripts, setAudioScripts] = useState<any[]>([]);
+  const [audioScriptsLoading, setAudioScriptsLoading] = useState(false);
+  const [audioApproving, setAudioApproving] = useState(false);
+  const [currentPlayingUrl, setCurrentPlayingUrl] = useState<string | null>(
+    null,
+  );
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [dialerActivating, setDialerActivating] = useState(false);
+  const [dialerStarting, setDialerStarting] = useState(false);
+  const [dialerPausing, setDialerPausing] = useState(false);
+  const [dialerResuming, setDialerResuming] = useState(false);
+  const [dialerStopping, setDialerStopping] = useState(false);
+  const { toast } = useToast();
 
   // Get auth tokens on mount
   useEffect(() => {
@@ -400,6 +430,687 @@ export default function MigrationDetailPage() {
     return fields.some((field) => field.includes(query));
   });
 
+  const fetchAudioScripts = async () => {
+    setAudioScriptsLoading(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        throw new Error("API Base URL or Tenant ID is not configured");
+      }
+
+      if (!authToken) {
+        throw new Error("Auth token is missing");
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/audio-preview`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to fetch audio preview",
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.data?.campaign_scripts) {
+        // Transform the audio URLs to absolute URLs
+        const transformedScripts = result.data.campaign_scripts.map(
+          (audio: any) => {
+            let playUrl = audio.play_url;
+
+            // If the URL is relative (starts with /), convert to absolute
+            if (playUrl && playUrl.startsWith("/")) {
+              // Use the API base URL and append the relative path
+              playUrl = `${API_BASE_URL.replace(/\/$/, "")}${playUrl}`;
+
+              console.log("[Audio URL Transform]", {
+                relative: audio.play_url,
+                absolute: playUrl,
+                filename: audio.filename,
+              });
+            }
+
+            return {
+              ...audio,
+              play_url: playUrl,
+            };
+          },
+        );
+
+        setAudioScripts(transformedScripts);
+        setShowAudioPreviewDialog(true);
+      } else {
+        throw new Error(result.message || "Failed to fetch audio scripts");
+      }
+    } catch (error: any) {
+      console.error("[MigrationDetailPage] Fetch audio scripts error:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to fetch audio scripts",
+        variant: "destructive",
+      });
+    } finally {
+      setAudioScriptsLoading(false);
+    }
+  };
+
+  const handleGenerateAudio = async () => {
+    setAudioGenerating(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!authToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Auth token is missing",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/generate-audio`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to generate audio",
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Audio generated successfully!",
+          variant: "default",
+        });
+        setShowScriptsDialog(false);
+
+        // Fetch and display the generated audio scripts
+        await fetchAudioScripts();
+      } else {
+        throw new Error(result.message || "Audio generation failed");
+      }
+    } catch (error: any) {
+      console.error("[MigrationDetailPage] Audio generation error:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to generate audio",
+        variant: "destructive",
+      });
+    } finally {
+      setAudioGenerating(false);
+    }
+  };
+
+  const toggleAudioPlayback = async (playUrl: string) => {
+    try {
+      // Validate URL
+      if (!playUrl || playUrl.trim() === "") {
+        toast({
+          title: "Error",
+          description: "Invalid audio URL",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+
+        // Add event listeners for the audio element
+        audioRef.current.addEventListener("play", () => {
+          setIsAudioPlaying(true);
+        });
+
+        audioRef.current.addEventListener("pause", () => {
+          setIsAudioPlaying(false);
+        });
+
+        audioRef.current.addEventListener("ended", () => {
+          setIsAudioPlaying(false);
+          setCurrentPlayingUrl(null);
+        });
+
+        audioRef.current.addEventListener("error", (e) => {
+          const audioElement = audioRef.current;
+          const errorCode = audioElement?.error?.code;
+          const errorMessage = audioElement?.error?.message;
+
+          console.error("[Audio Error] Details:", {
+            code: errorCode,
+            message: errorMessage,
+            src: audioElement?.src,
+            networkState: audioElement?.networkState,
+            readyState: audioElement?.readyState,
+          });
+
+          let userMessage = "Failed to load audio file";
+
+          // Error codes: 1=MEDIA_ERR_ABORTED, 2=MEDIA_ERR_NETWORK, 3=MEDIA_ERR_DECODE, 4=MEDIA_ERR_SRC_NOT_SUPPORTED
+          switch (errorCode) {
+            case 1:
+              userMessage = "Audio loading was aborted";
+              break;
+            case 2:
+              userMessage = "Network error loading audio";
+              break;
+            case 3:
+              userMessage = "Audio format is not supported";
+              break;
+            case 4:
+              userMessage = "Audio source not found or not supported";
+              break;
+            default:
+              userMessage = errorMessage || "Failed to load audio file";
+          }
+
+          toast({
+            title: "Audio Error",
+            description: userMessage,
+            variant: "destructive",
+          });
+          setIsAudioPlaying(false);
+          setCurrentPlayingUrl(null);
+        });
+      }
+
+      // If clicking the same audio, toggle play/pause
+      if (currentPlayingUrl === playUrl && audioRef.current.src) {
+        if (isAudioPlaying) {
+          audioRef.current.pause();
+        } else {
+          audioRef.current.play().catch((err) => {
+            console.error("[Audio Play Error]", err);
+          });
+        }
+      } else {
+        // Play different audio
+        console.log("[Audio Playback] Loading audio:", playUrl);
+
+        try {
+          // Fetch the audio file through the proxy API
+          const fetchUrl = playUrl.startsWith("http")
+            ? `/api/audio-proxy?url=${encodeURIComponent(playUrl)}`
+            : playUrl.startsWith("/")
+              ? `/api/audio-proxy?url=${encodeURIComponent(playUrl)}`
+              : playUrl;
+
+          console.log("[Audio Playback] Fetching from:", fetchUrl);
+
+          const response = await fetch(fetchUrl, {
+            method: "GET",
+            headers: {
+              "x-tenant-id": process.env.NEXT_PUBLIC_TENANT_ID || "",
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch audio: ${response.status} ${response.statusText}`,
+            );
+          }
+
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+
+          console.log("[Audio Playback] Created object URL for audio blob");
+
+          audioRef.current.src = audioUrl;
+          audioRef.current.load();
+
+          audioRef.current.play().catch((err) => {
+            console.error("[Audio Play Error]", err);
+            if (err.name === "NotAllowedError") {
+              toast({
+                title: "Playback Error",
+                description: "Playback was prevented by browser policy",
+                variant: "destructive",
+              });
+            } else if (err.name === "NotSupportedError") {
+              toast({
+                title: "Playback Error",
+                description: "Audio format is not supported",
+                variant: "destructive",
+              });
+            }
+          });
+
+          setCurrentPlayingUrl(playUrl);
+        } catch (fetchError: any) {
+          console.error("[Audio Fetch Error]", fetchError);
+          toast({
+            title: "Error",
+            description: fetchError?.message || "Failed to load audio file",
+            variant: "destructive",
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error("[Audio Playback Error]", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to play audio",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleApproveAudio = async () => {
+    setAudioApproving(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!authToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Auth token is missing",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/approve-audio`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to approve audio",
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Audio approved successfully!",
+          variant: "default",
+        });
+        setShowAudioPreviewDialog(false);
+        console.log("[MigrationDetailPage] Audio approved:", result.data);
+      } else {
+        throw new Error(result.message || "Audio approval failed");
+      }
+    } catch (error: any) {
+      console.error("[MigrationDetailPage] Audio approval error:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to approve audio",
+        variant: "destructive",
+      });
+    } finally {
+      setAudioApproving(false);
+    }
+  };
+
+  const handleActivateAndStartDialer = async () => {
+    setDialerActivating(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!authToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Auth token is missing",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Step 1: Activate Campaign
+      const activateResponse = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify({
+            status: "active",
+          }),
+        },
+      );
+
+      if (!activateResponse.ok) {
+        const errorData = await activateResponse.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to activate campaign",
+        );
+      }
+
+      const activateResult = await activateResponse.json();
+      console.log("[Campaign Activated]:", activateResult);
+
+      toast({
+        title: "Campaign Activated",
+        description: "Campaign is now active and ready for dialer",
+        variant: "default",
+      });
+
+      // Step 2: Start Dialer
+      setDialerStarting(true);
+      const dialerResponse = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/start`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify({
+            campaign_id: campaignId,
+            max_concurrent_calls: 5,
+          }),
+        },
+      );
+
+      if (!dialerResponse.ok) {
+        const errorData = await dialerResponse.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to start dialer",
+        );
+      }
+
+      const dialerResult = await dialerResponse.json();
+      console.log("[Dialer Started]:", dialerResult);
+
+      if (dialerResult.success) {
+        const data = dialerResult.data;
+        toast({
+          title: "Dialer Started!",
+          description: `${data.calls_initiated || 0} calls initiated. ${data.total_contacts || 0} total contacts in queue.`,
+          variant: "default",
+        });
+
+        // Update campaign status locally
+        setCampaign((prev: any) => ({
+          ...prev,
+          status: "active",
+        }));
+
+        // Navigate to dashboard or show success message
+        setTimeout(() => {
+          router.push("/campaigns/migrations");
+        }, 2000);
+      } else {
+        throw new Error(dialerResult.message || "Failed to start dialer");
+      }
+    } catch (error: any) {
+      console.error("[Activate & Start Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description:
+          error?.message || "Failed to activate campaign and start dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerActivating(false);
+      setDialerStarting(false);
+    }
+  };
+
+  const handlePauseDialer = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDialerPausing(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/pause/${campaignId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to pause dialer",
+        );
+      }
+
+      toast({
+        title: "Dialer Paused",
+        description: "Dialer is now paused.",
+        variant: "default",
+      });
+    } catch (error: any) {
+      console.error("[Pause Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to pause dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerPausing(false);
+    }
+  };
+
+  const handleResumeDialer = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDialerResuming(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/resume/${campaignId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to resume dialer",
+        );
+      }
+
+      toast({
+        title: "Dialer Resumed",
+        description: "Dialer has been resumed.",
+        variant: "default",
+      });
+    } catch (error: any) {
+      console.error("[Resume Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to resume dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerResuming(false);
+    }
+  };
+
+  const handleStopDialer = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDialerStopping(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/stop`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify({ campaign_id: campaignId }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to stop dialer",
+        );
+      }
+
+      toast({
+        title: "Dialer Stopped",
+        description: "Dialer has been stopped.",
+        variant: "default",
+      });
+    } catch (error: any) {
+      console.error("[Stop Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to stop dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerStopping(false);
+    }
+  };
+
   return (
     <>
       <div className="flex min-h-screen bg-gray-50">
@@ -460,15 +1171,111 @@ export default function MigrationDetailPage() {
                       </div>
                     </div>
                   </div>
-                  <AddCandidatesWorkflow
-                    entityId={campaignId}
-                    jobId={jobId}
-                    jobCode={campaign?.job_code || campaign?.jobCode}
-                    candidates={candidates}
-                    setCandidates={setCandidates}
-                    routePrefix="migrations"
-                    entityType="migration"
-                  />
+                  <div className="flex flex-col gap-2">
+                    <AddCandidatesWorkflow
+                      entityId={campaignId}
+                      jobId={jobId}
+                      jobCode={campaign?.job_code || campaign?.jobCode}
+                      candidates={candidates}
+                      setCandidates={setCandidates}
+                      routePrefix="migrations"
+                      entityType="migration"
+                    />
+                    <Button
+                      onClick={() => setShowScriptsDialog(true)}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      <Music className="w-4 h-4" />
+                      Campaign Scripts
+                    </Button>
+                    <Button
+                      onClick={handleActivateAndStartDialer}
+                      disabled={dialerActivating || dialerStarting}
+                      size="sm"
+                      className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {dialerActivating || dialerStarting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {dialerActivating
+                            ? "Activating..."
+                            : "Starting Dialer..."}
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4" />
+                          Start Dialer
+                        </>
+                      )}
+                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handlePauseDialer}
+                        disabled={
+                          dialerPausing || dialerActivating || dialerStarting
+                        }
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                      >
+                        {dialerPausing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Pausing...
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="w-4 h-4" />
+                            Pause Dialer
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={handleResumeDialer}
+                        disabled={
+                          dialerResuming || dialerActivating || dialerStarting
+                        }
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                      >
+                        {dialerResuming ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Resuming...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4" />
+                            Resume Dialer
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={handleStopDialer}
+                        disabled={
+                          dialerStopping || dialerActivating || dialerStarting
+                        }
+                        size="sm"
+                        variant="destructive"
+                        className="gap-2"
+                      >
+                        {dialerStopping ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Stopping...
+                          </>
+                        ) : (
+                          <>
+                            <Square className="w-4 h-4" />
+                            Stop Dialer
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 <p className="text-gray-600 max-w-2xl">
                   {campaign.description || "No description available"}
@@ -621,6 +1428,162 @@ export default function MigrationDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Campaign Scripts Dialog */}
+      <Dialog open={showScriptsDialog} onOpenChange={setShowScriptsDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Campaign Scripts</DialogTitle>
+            <DialogDescription>
+              Generate audio for your campaign
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-900">
+                Generate AI voice audio files for all campaign communications
+                including job pitch, skill questions, and personalized candidate
+                names.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowScriptsDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleGenerateAudio}
+                disabled={audioGenerating}
+                className="flex-1"
+              >
+                {audioGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Music className="w-4 h-4 mr-2" />
+                    Generate Audio
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Audio Preview Dialog */}
+      <Dialog
+        open={showAudioPreviewDialog}
+        onOpenChange={setShowAudioPreviewDialog}
+      >
+        <DialogContent className="max-w-4xl w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Generated Audio Scripts</DialogTitle>
+            <DialogDescription>
+              Audio files generated for your campaign. Click play to listen.
+            </DialogDescription>
+          </DialogHeader>
+
+          {audioScriptsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                <p className="text-gray-600 text-sm">
+                  Loading audio scripts...
+                </p>
+              </div>
+            </div>
+          ) : audioScripts.length > 0 ? (
+            <div className="overflow-x-auto w-full -mx-6 px-6">
+              <table className="w-full text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-2 sm:px-4 font-semibold text-gray-700 truncate">
+                      Audio Name
+                    </th>
+                    <th className="text-left py-3 px-2 sm:px-4 font-semibold text-gray-700 truncate">
+                      Duration
+                    </th>
+                    <th className="text-center py-3 px-2 sm:px-4 font-semibold text-gray-700 whitespace-nowrap">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {audioScripts.map((audio: any, index: number) => (
+                    <tr
+                      key={index}
+                      className="border-b border-gray-100 hover:bg-gray-50"
+                    >
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-900 truncate">
+                        {audio.name || audio.filename || `Audio ${index + 1}`}
+                      </td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-600 truncate">
+                        {audio.duration_display || "—"}
+                      </td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleAudioPlayback(audio.play_url)}
+                          className="gap-2 whitespace-nowrap text-xs sm:text-sm"
+                          disabled={!audio.play_url}
+                        >
+                          {currentPlayingUrl === audio.play_url &&
+                          isAudioPlaying ? (
+                            <>
+                              <Pause className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <span className="hidden sm:inline">Pause</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <span className="hidden sm:inline">Play</span>
+                            </>
+                          )}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-600">No audio scripts available</p>
+            </div>
+          )}
+
+          <div className="flex justify-between gap-2 pt-4">
+            <Button
+              onClick={handleApproveAudio}
+              disabled={audioApproving || audioScripts.length === 0}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {audioApproving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Approving...
+                </>
+              ) : (
+                "Approve Audio"
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowAudioPreviewDialog(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

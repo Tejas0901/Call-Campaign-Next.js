@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { FileText, UploadCloud, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CandidateRow } from "@/components/ui/candidates-table";
+import { HyrexLoginDialog } from "@/components/hyrex/HyrexLoginDialog";
 
 interface AddCandidatesWorkflowProps {
   entityId: string; // draftId or campaignId
@@ -44,22 +45,168 @@ export default function AddCandidatesWorkflow({
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
   const [manualResumes, setManualResumes] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [showHyrexLogin, setShowHyrexLogin] = useState(false);
+  const [hyrexToken, setHyrexToken] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<"add" | "ats" | null>(
+    null,
+  );
 
   const singleInputRef = useRef<HTMLInputElement | null>(null);
   const bulkInputRef = useRef<HTMLInputElement | null>(null);
 
-  const acceptedExt = [".pdf", ".doc", ".docx"];
+  const acceptedExt = [".pdf", ".doc", ".docx", ".csv", ".xlsx", ".xls"];
   const isAccepted = (file: File) =>
     acceptedExt.some((ext) => file.name.toLowerCase().endsWith(ext));
 
   const entityLabel = entityType === "draft" ? "draft" : "campaign";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("hyrex-auth-token");
+    if (stored) setHyrexToken(stored);
+  }, []);
+
+  const ensureHyrexToken = (action: "add" | "ats") => {
+    if (!hyrexToken) {
+      setPendingAction(action);
+      setShowHyrexLogin(true);
+      return false;
+    }
+    return true;
+  };
+
+  const handleAddClick = () => {
+    if (!ensureHyrexToken("add")) return;
+    setShowAddDialog(true);
+  };
+
+  const handleAtsClick = () => {
+    if (!ensureHyrexToken("ats")) return;
+    setShowAtsDialog(true);
+  };
+
+  const handleLoginSuccess = (token: string) => {
+    setHyrexToken(token);
+    if (pendingAction === "add") setShowAddDialog(true);
+    if (pendingAction === "ats") setShowAtsDialog(true);
+    setPendingAction(null);
+  };
+
+  const handleImportCandidates = async () => {
+    if (manualResumes.length === 0) {
+      setImportError("Please select at least one file to import");
+      return;
+    }
+
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      setImportError("API configuration is missing");
+      return;
+    }
+
+    setImportLoading(true);
+    setImportError("");
+
+    try {
+      // Filter for spreadsheet/CSV files only
+      const csvExcelFiles = manualResumes.filter((file) => {
+        const ext = file.name.toLowerCase();
+        return (
+          ext.endsWith(".csv") || ext.endsWith(".xlsx") || ext.endsWith(".xls")
+        );
+      });
+
+      if (csvExcelFiles.length === 0) {
+        setImportError(
+          "Please select at least one CSV or Excel file to import",
+        );
+        setImportLoading(false);
+        return;
+      }
+
+      // Send the first file
+      const fileToImport = csvExcelFiles[0];
+
+      console.log("[Import] File selected:", {
+        name: fileToImport.name,
+        size: fileToImport.size,
+        type: fileToImport.type,
+      });
+
+      if (fileToImport.size === 0) {
+        setImportError("The selected file is empty");
+        setImportLoading(false);
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", fileToImport, fileToImport.name);
+
+      console.log("[Import] Sending file to API:", {
+        url: `${API_BASE_URL.replace(/\/$/, "")}/api/v1/contacts/import/${entityId}`,
+        tenantId: TENANT_ID,
+        fileName: fileToImport.name,
+      });
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/contacts/import/${entityId}`,
+        {
+          method: "POST",
+          headers: {
+            "tenant-id": TENANT_ID,
+          },
+          body: formData,
+        },
+      );
+
+      const responseText = await response.text();
+      console.log("[Import] Response status:", response.status);
+      console.log("[Import] Response body:", responseText);
+
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch {
+        throw new Error(`Invalid response: ${responseText}`);
+      }
+
+      if (!response.ok) {
+        const errorMessage =
+          result?.detail ||
+          result?.error?.message ||
+          result?.message ||
+          "Failed to import candidates";
+        throw new Error(errorMessage);
+      }
+
+      if (result.success) {
+        setManualResumes([]);
+        setShowImportManuallyDialog(false);
+        setShowAddDialog(false);
+        alert(
+          `Import successful! ${result.data?.imported || 0} candidates imported, ${result.data?.skipped || 0} skipped.`,
+        );
+      } else {
+        throw new Error(result.message || "Import failed");
+      }
+    } catch (error: any) {
+      console.error("[Import Error]", error);
+      setImportError(error?.message || "Failed to import candidates");
+    } finally {
+      setImportLoading(false);
+    }
+  };
 
   return (
     <>
       <Button
         variant="default"
         className="bg-primary-600 text-white hover:bg-primary-700 whitespace-nowrap"
-        onClick={() => setShowAddDialog(true)}
+        onClick={handleAddClick}
       >
         Add candidates
       </Button>
@@ -99,7 +246,7 @@ export default function AddCandidatesWorkflow({
               type="button"
               variant="outline"
               className="border-primary-200 text-primary-700 hover:bg-primary-50"
-              onClick={() => setShowAtsDialog(true)}
+              onClick={handleAtsClick}
             >
               ATS
             </Button>
@@ -236,6 +383,29 @@ export default function AddCandidatesWorkflow({
                 </ul>
               )}
             </div>
+            {importError && (
+              <p className="text-sm text-red-600">{importError}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowImportManuallyDialog(false);
+                  setImportError("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={manualResumes.length === 0 || importLoading}
+                onClick={handleImportCandidates}
+                className="bg-primary-600 text-white hover:bg-primary-700"
+              >
+                {importLoading ? "Importing..." : "Import"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -246,15 +416,17 @@ export default function AddCandidatesWorkflow({
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Upload a single resume</DialogTitle>
-            <DialogDescription>Accepted: .pdf, .doc, .docx</DialogDescription>
+            <DialogTitle>Upload a single resume or file</DialogTitle>
+            <DialogDescription>
+              Accepted: .pdf, .doc, .docx, .csv, .xlsx, .xls
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <input
               ref={singleInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.doc,.docx,.csv,.xlsx,.xls,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => {
                 setUploadError("");
                 const f = e.target.files?.[0] ?? null;
@@ -295,7 +467,9 @@ export default function AddCandidatesWorkflow({
                   <span className="font-medium">Click to upload</span> or drag &
                   drop
                 </p>
-                <p className="text-xs text-gray-500">PDF, DOC, DOCX</p>
+                <p className="text-xs text-gray-500">
+                  PDF, DOC, DOCX, CSV, XLSX, XLS
+                </p>
                 <div className="mt-2">
                   <Button
                     type="button"
@@ -363,8 +537,10 @@ export default function AddCandidatesWorkflow({
       >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Bulk upload resumes</DialogTitle>
-            <DialogDescription>Upload up to 50 files</DialogDescription>
+            <DialogTitle>Bulk upload resumes and files</DialogTitle>
+            <DialogDescription>
+              Upload up to 50 files (.pdf, .doc, .docx, .csv, .xlsx, .xls)
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <input
@@ -372,7 +548,7 @@ export default function AddCandidatesWorkflow({
               type="file"
               multiple
               className="hidden"
-              accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.doc,.docx,.csv,.xlsx,.xls,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(e) => {
                 setUploadError("");
                 const files = Array.from(e.target.files ?? []).filter(
@@ -416,7 +592,7 @@ export default function AddCandidatesWorkflow({
                   drop
                 </p>
                 <p className="text-xs text-gray-500">
-                  PDF, DOC, DOCX • Up to 50 files
+                  PDF, DOC, DOCX, CSV, XLSX, XLS • Up to 50 files
                 </p>
                 <div className="mt-2">
                   <Button
@@ -507,6 +683,16 @@ export default function AddCandidatesWorkflow({
           </div>
         </DialogContent>
       </Dialog>
+
+      <HyrexLoginDialog
+        open={showHyrexLogin}
+        onOpenChange={(open) => {
+          setShowHyrexLogin(open);
+          if (!open) setPendingAction(null);
+        }}
+        onSuccess={handleLoginSuccess}
+        description="Login to Hyrex to import candidates."
+      />
     </>
   );
 }
