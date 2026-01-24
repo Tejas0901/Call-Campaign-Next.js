@@ -7,6 +7,8 @@ import {
   CheckCircle,
   Calendar,
   Briefcase,
+  RotateCcw,
+  Trash,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -14,24 +16,37 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 interface Campaign {
   id: string;
   job_role: string;
   status: string; // allow unknown statuses safely
   created_at: string;
+  is_deleted?: boolean;
+  deleted_at?: string;
 }
 
 interface MigrationCardProps {
   campaign: Campaign;
   onView?: (id: string) => void;
   onDelete?: (id: string) => void;
+  isDeleted?: boolean;
+  onRestore?: (id: string) => void;
+  isRestoring?: boolean;
+  onPermanentDelete?: (id: string) => void;
+  isPermanentDeleting?: boolean;
 }
 
 export default function MigrationCard({
   campaign,
   onView,
   onDelete,
+  isDeleted = false,
+  onRestore,
+  isRestoring = false,
+  onPermanentDelete,
+  isPermanentDeleting = false,
 }: MigrationCardProps) {
   const router = useRouter();
 
@@ -127,18 +142,44 @@ export default function MigrationCard({
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onView
-                      ? onView(campaign.id)
-                      : router.push(`/campaigns/migrations/${campaign.id}`);
-                  }}
-                  className="hover:bg-blue-50 hover:text-blue-700"
-                >
-                  View Details
-                </DropdownMenuItem>
-                {onDelete && (
+                {!isDeleted && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onView
+                        ? onView(campaign.id)
+                        : router.push(`/campaigns/migrations/${campaign.id}`);
+                    }}
+                    className="hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    View Details
+                  </DropdownMenuItem>
+                )}
+                {isDeleted && onRestore && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRestore(campaign.id);
+                    }}
+                    className="hover:bg-green-50 hover:text-green-700"
+                    disabled={isRestoring}
+                  >
+                    {isRestoring ? "Restoring..." : "Restore"}
+                  </DropdownMenuItem>
+                )}
+                {isDeleted && onPermanentDelete && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPermanentDelete(campaign.id);
+                    }}
+                    className="hover:bg-red-50 hover:text-red-700"
+                    disabled={isPermanentDeleting}
+                  >
+                    {isPermanentDeleting ? "Deleting..." : "Permanent Delete"}
+                  </DropdownMenuItem>
+                )}
+                {!isDeleted && onDelete && (
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
@@ -191,16 +232,50 @@ export default function MigrationCard({
 
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
             <div className="text-sm text-gray-500">
-              Created {formatDate(campaign.created_at)}
+              {isDeleted && campaign.deleted_at
+                ? `Deleted ${formatDate(campaign.deleted_at)}`
+                : `Created ${formatDate(campaign.created_at)}`}
             </div>
-            <span
-              className={`px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 ${config.bgColor} ${config.textColor}`}
-            >
+            <div className="flex items-center gap-2">
+              {isDeleted && onRestore && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRestore(campaign.id);
+                  }}
+                  disabled={isRestoring}
+                  className="gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  {isRestoring ? "Restoring..." : "Restore"}
+                </Button>
+              )}
+              {isDeleted && onPermanentDelete && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPermanentDelete(campaign.id);
+                  }}
+                  disabled={isPermanentDeleting}
+                  className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                >
+                  <Trash className="w-3 h-3" />
+                  {isPermanentDeleting ? "Deleting..." : "Permanently Delete"}
+                </Button>
+              )}
               <span
-                className={`w-1.5 h-1.5 rounded-full ${config.dotColor}`}
-              ></span>
-              {config.label}
-            </span>
+                className={`px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 ${config.bgColor} ${config.textColor}`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${config.dotColor}`}
+                ></span>
+                {config.label}
+              </span>
+            </div>
           </div>
         </div>
       </div>

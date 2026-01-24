@@ -14,6 +14,9 @@ import {
   Play,
   Pause,
   Square,
+  Trash2,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { campaignData } from "@/data/campaignData";
@@ -35,6 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function MigrationDetailPage() {
   const params = useParams();
@@ -67,6 +71,12 @@ export default function MigrationDetailPage() {
   const [dialerPausing, setDialerPausing] = useState(false);
   const [dialerResuming, setDialerResuming] = useState(false);
   const [dialerStopping, setDialerStopping] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [showActivateDialog, setShowActivateDialog] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deactivateLoading, setDeactivateLoading] = useState(false);
+  const [activateLoading, setActivateLoading] = useState(false);
   const { toast } = useToast();
 
   // Get auth tokens on mount
@@ -1111,6 +1121,219 @@ export default function MigrationDetailPage() {
     }
   };
 
+  const handleDeleteCampaign = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to delete campaign",
+        );
+      }
+
+      toast({
+        title: "Campaign Deleted",
+        description:
+          "Campaign has been moved to trash. You can restore it later.",
+        variant: "default",
+      });
+
+      setShowDeleteDialog(false);
+
+      // Navigate back to migrations page after 1.5 seconds
+      setTimeout(() => {
+        router.push("/campaigns/migrations");
+      }, 1500);
+    } catch (error: any) {
+      console.error("[Delete Campaign Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to delete campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleDeactivateCampaign = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDeactivateLoading(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/deactivate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to deactivate campaign",
+        );
+      }
+
+      toast({
+        title: "Campaign Deactivated",
+        description: "Campaign has been deactivated successfully.",
+        variant: "default",
+      });
+
+      setShowDeactivateDialog(false);
+
+      // Update campaign status locally
+      setCampaign((prev: any) => ({
+        ...prev,
+        status: "inactive",
+      }));
+    } catch (error: any) {
+      console.error("[Deactivate Campaign Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to deactivate campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setDeactivateLoading(false);
+    }
+  };
+
+  const handleActivateCampaign = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setActivateLoading(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/activate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to activate campaign",
+        );
+      }
+
+      toast({
+        title: "Campaign Activated",
+        description: "Campaign has been activated successfully.",
+        variant: "default",
+      });
+
+      setShowActivateDialog(false);
+
+      // Update campaign status locally
+      setCampaign((prev: any) => ({
+        ...prev,
+        status: "active",
+      }));
+    } catch (error: any) {
+      console.error("[Activate Campaign Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to activate campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setActivateLoading(false);
+    }
+  };
+
   return (
     <>
       <div className="flex min-h-screen bg-gray-50">
@@ -1190,6 +1413,38 @@ export default function MigrationDetailPage() {
                       <Music className="w-4 h-4" />
                       Campaign Scripts
                     </Button>
+                    <div className="flex gap-2">
+                      {displayStatus === "Running" ? (
+                        <Button
+                          onClick={() => setShowDeactivateDialog(true)}
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 flex-1"
+                        >
+                          <PowerOff className="w-4 h-4" />
+                          Deactivate
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => setShowActivateDialog(true)}
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 flex-1"
+                        >
+                          <Power className="w-4 h-4" />
+                          Activate
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => setShowDeleteDialog(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 flex-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </Button>
+                    </div>
                     <Button
                       onClick={handleActivateAndStartDialer}
                       disabled={dialerActivating || dialerStarting}
@@ -1584,6 +1839,43 @@ export default function MigrationDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Campaign Confirmation */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Campaign"
+        description="Are you sure you want to delete this campaign? It will be moved to trash and can be restored later."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={handleDeleteCampaign}
+        loading={deleteLoading}
+      />
+
+      {/* Deactivate Campaign Confirmation */}
+      <ConfirmDialog
+        open={showDeactivateDialog}
+        onOpenChange={setShowDeactivateDialog}
+        title="Deactivate Campaign"
+        description="Are you sure you want to deactivate this campaign? This will pause all campaign activities without deleting it."
+        confirmText="Deactivate"
+        cancelText="Cancel"
+        onConfirm={handleDeactivateCampaign}
+        loading={deactivateLoading}
+      />
+
+      {/* Activate Campaign Confirmation */}
+      <ConfirmDialog
+        open={showActivateDialog}
+        onOpenChange={setShowActivateDialog}
+        title="Activate Campaign"
+        description="Are you sure you want to activate this campaign? This will resume all campaign activities."
+        confirmText="Activate"
+        cancelText="Cancel"
+        onConfirm={handleActivateCampaign}
+        loading={activateLoading}
+      />
     </>
   );
 }
