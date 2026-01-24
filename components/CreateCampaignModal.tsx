@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchBox } from "@/components/ui/search-box";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -22,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { UploadCloud, FileText, Trash2, X } from "lucide-react";
 import { Combobox, ComboboxOption } from "@/components/ui/combobox";
 import { useJobCodes } from "@/hooks/useJobCodes";
+import { LocationMultiSelect } from "@/components/LocationMultiSelect";
 
 interface CreateCampaignModalProps {
   open: boolean;
@@ -31,6 +33,7 @@ interface CreateCampaignModalProps {
     id?: string;
     jobCode?: string;
     jobInfo?: string; // kept for backward-compatibility with drafts
+    jobId?: number; // Added for ATS integration
   };
   onCreated?: (payload: {
     id?: string;
@@ -42,8 +45,9 @@ interface CreateCampaignModalProps {
       id: string;
       jobCode: string;
       jobInfo: string;
+      jobId?: number; // Added for ATS integration
       savedAt: string;
-    }>
+    }>,
   ) => void;
 }
 
@@ -55,16 +59,48 @@ export default function CreateCampaignModal({
   onCreated,
   onDraftSaved,
 }: CreateCampaignModalProps) {
-  // Form fields
+  // Basic Information Section
+  const [campaignName, setCampaignName] = useState("");
+  const [jobId, setJobId] = useState<number | null>(null);
   const [jobCode, setJobCode] = useState("");
   const [jobRole, setJobRole] = useState("");
+  const [description, setDescription] = useState("");
+
+  // Company Details Section
   const [companyName, setCompanyName] = useState("");
-  const [location, setLocation] = useState("");
+  const [clientName, setClientName] = useState("");
+
+  // Job Details Section
+  const [jobType, setJobType] = useState<string>("full_time");
   const [workMode, setWorkMode] = useState<string>("");
-  const [minExp, setMinExp] = useState("");
-  const [maxExp, setMaxExp] = useState("");
+  const [location, setLocation] = useState("");
+  const [multipleLocations, setMultipleLocations] = useState<string[]>([]);
+  const [locationInput, setLocationInput] = useState("");
+
+  // Compensation Section
   const [minCTC, setMinCTC] = useState("");
   const [maxCTC, setMaxCTC] = useState("");
+
+  // Experience Section
+  const [minExp, setMinExp] = useState("");
+  const [maxExp, setMaxExp] = useState("");
+
+  // Shift & Interview Section
+  const [shiftType, setShiftType] = useState<string>("");
+  const [interviewMode, setInterviewMode] = useState<string>("");
+
+  // Walk-in Drive Section
+  const [isWalkinDrive, setIsWalkinDrive] = useState(false);
+  const [driveDate, setDriveDate] = useState("");
+  const [driveLocation, setDriveLocation] = useState("");
+  const [driveTime, setDriveTime] = useState("");
+
+  // Voice Settings Section
+  const [voiceGender, setVoiceGender] = useState<"female" | "male">("female");
+
+  // Legacy fields (for backward compatibility)
+  const [primarySkills, setPrimarySkills] = useState("");
+  const [frontendSkills, setFrontendSkills] = useState("");
   const [jobDetails, setJobDetails] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -91,13 +127,13 @@ export default function CreateCampaignModal({
         if (stored) {
           console.log(
             "[CreateCampaignModal] Token loaded from localStorage on mount:",
-            !!stored
+            !!stored,
           );
           return stored;
         }
       }
       return undefined;
-    }
+    },
   );
 
   useEffect(() => {
@@ -107,7 +143,7 @@ export default function CreateCampaignModal({
         setTokenFromStorage(stored);
         console.log(
           "[CreateCampaignModal] Token read from localStorage:",
-          !!stored
+          !!stored,
         );
       }
     }
@@ -118,7 +154,7 @@ export default function CreateCampaignModal({
   console.log(
     "[CreateCampaignModal] Effective authToken:",
     !!effectiveToken,
-    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined"
+    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined",
   );
 
   const {
@@ -140,6 +176,7 @@ export default function CreateCampaignModal({
       const selectedJob = jobs.find((j) => j.job_code === jobCode);
       if (selectedJob) {
         // Auto-fill all fields from API data
+        setJobId(selectedJob.id ?? null);
         setJobRole(selectedJob.title || "");
         setCompanyName(selectedJob.client_name || "");
 
@@ -173,9 +210,12 @@ export default function CreateCampaignModal({
         }
 
         if (selectedJob.description) {
-          setJobDetails(toPlainText(selectedJob.description));
+          const plainDescription = toPlainText(selectedJob.description);
+          setJobDetails(plainDescription);
+          setDescription(plainDescription);
         } else {
           setJobDetails("");
+          setDescription("");
         }
 
         if (selectedJob.created_by?.email) {
@@ -210,10 +250,12 @@ export default function CreateCampaignModal({
   const [atsCandidatesLoading, setAtsCandidatesLoading] = useState(false);
   const [atsCandidatesError, setAtsCandidatesError] = useState<string>("");
   const [atsPage, setAtsPage] = useState(1);
-  const [atsPageSize, setAtsPageSize] = useState(10);
-  const [selectedCandidates, setSelectedCandidates] = useState<Set<number>>(
-    new Set()
+  const [atsPageSize, setAtsPageSize] = useState(25);
+  const [atsSearch, setAtsSearch] = useState("");
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(
+    new Set(),
   );
+  const [selectAllPages, setSelectAllPages] = useState(false);
   const [atsTotalCount, setAtsTotalCount] = useState(0);
   const atsTotalCountRef = useRef(0); // Keep track of total count across renders
   const singleInputRef = useRef<HTMLInputElement | null>(null);
@@ -239,13 +281,30 @@ export default function CreateCampaignModal({
     return acceptedExt.some((ext) => name.endsWith(ext));
   };
 
-  // Fetch ATS candidates (with fallback to fetch-all for pagination issues)
+  const getCandidateKey = (
+    candidate: any,
+    idx: number,
+    pageOverride?: number,
+  ) => {
+    return (
+      candidate?.id?.toString() ||
+      candidate?.submission_id?.toString() ||
+      candidate?.candidate_id?.toString() ||
+      `${
+        candidate?.candidate_email ||
+        candidate?.candidate_mobile ||
+        candidate?.candidate_name ||
+        "candidate"
+      }-${candidate?.job_code || "job"}-${(pageOverride ?? atsPage) - 1}-${idx}`
+    );
+  };
+
+  // Fetch ATS candidates with server-side pagination (API max page_size = 25)
   const fetchAtsCandidates = async (
     jobId: number,
     page: number = 1,
-    pageSize: number = 10,
+    pageSize: number = 25,
     knownTotalCount?: number,
-    retryMode: boolean = false
   ) => {
     setAtsCandidatesLoading(true);
     setAtsCandidatesError("");
@@ -259,45 +318,37 @@ export default function CreateCampaignModal({
       if (effectiveToken) {
         headers["Authorization"] = `${authFormat} ${effectiveToken}`;
         console.log(
-          `[fetchAtsCandidates] Using ${authFormat} format on page ${page}`
+          `[fetchAtsCandidates] Using ${authFormat} format on page ${page}`,
         );
       }
 
-      // If pagination failed before, try fetching all candidates with a high page size
-      const effectivePageSize = retryMode ? 1000 : pageSize;
-      const effectivePage = retryMode ? 1 : page;
-
       let response = await fetch(
-        `/api/candidates/submissions?job_id=${jobId}&page=${effectivePage}&page_size=${effectivePageSize}`,
+        `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
         {
           method: "GET",
           headers,
-        }
+        },
       );
 
-      console.log(
-        "[fetchAtsCandidates] Response status:",
-        response.status,
-        retryMode ? "(retry mode)" : ""
-      );
+      console.log("[fetchAtsCandidates] Response status:", response.status);
 
       // If 401, try alternate format
       if (response.status === 401 && effectiveToken) {
         const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
         console.log(
-          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`
+          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`,
         );
         headers["Authorization"] = `${alternateFormat} ${effectiveToken}`;
         response = await fetch(
-          `/api/candidates/submissions?job_id=${jobId}&page=${effectivePage}&page_size=${effectivePageSize}`,
+          `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
           {
             method: "GET",
             headers,
-          }
+          },
         );
         console.log(
           `[fetchAtsCandidates] ${alternateFormat} attempt status:`,
-          response.status
+          response.status,
         );
 
         // If successful with alternate format, remember it
@@ -305,7 +356,7 @@ export default function CreateCampaignModal({
           authFormat = alternateFormat;
           setStoredAuthFormat(alternateFormat);
           console.log(
-            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`
+            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`,
           );
         }
       }
@@ -313,30 +364,13 @@ export default function CreateCampaignModal({
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error("[fetchAtsCandidates] Error response:", errorData);
-
-        // If pagination failed and we haven't retried, try fetch-all mode
-        if (!retryMode && page > 1 && atsTotalCountRef.current > 0) {
-          console.log(
-            "[fetchAtsCandidates] Pagination failed, retrying with fetch-all mode..."
-          );
-          await fetchAtsCandidates(
-            jobId,
-            page,
-            pageSize,
-            knownTotalCount,
-            true
-          );
-          return;
-        }
-
         throw new Error(errorData?.error || "Failed to fetch candidates");
       }
 
       const data = await response.json();
       const resultsReceived = data.results?.length || 0;
       console.log(
-        `[fetchAtsCandidates] Page ${effectivePage}: Got ${resultsReceived} candidates, API count: ${data.count}`,
-        retryMode ? "(fetch-all mode)" : ""
+        `[fetchAtsCandidates] Page ${page}: Got ${resultsReceived} candidates, API count: ${data.count}`,
       );
 
       // Store total count
@@ -349,7 +383,7 @@ export default function CreateCampaignModal({
       ) {
         actualTotalCount = knownTotalCount;
         console.log(
-          `[fetchAtsCandidates] API didn't return count, using known count: ${actualTotalCount}`
+          `[fetchAtsCandidates] API didn't return count, using known count: ${actualTotalCount}`,
         );
       }
 
@@ -357,65 +391,36 @@ export default function CreateCampaignModal({
         atsTotalCountRef.current = actualTotalCount;
       }
 
-      // If in retry mode (fetch-all), slice the results to the requested page
-      let candidatesToShow = data.results || data.data || [];
-      if (retryMode && effectivePageSize === 1000) {
-        const start = (page - 1) * pageSize;
-        const end = start + pageSize;
-        console.log(
-          `[fetchAtsCandidates] Slicing results: [${start}:${end}] from ${candidatesToShow.length} total`
-        );
-        candidatesToShow = candidatesToShow.slice(start, end);
-      }
-
       // Update candidates and total count
+      const candidatesToShow = data.results || data.data || [];
       setAtsCandidates(candidatesToShow);
       setAtsTotalCount(actualTotalCount || 0);
+
+      // If "select all" is enabled, auto-add current page candidates to the selection set
+      if (selectAllPages) {
+        setSelectedCandidates((prev) => {
+          const next = new Set(prev);
+          candidatesToShow.forEach((candidate: any, idx: number) => {
+            next.add(getCandidateKey(candidate, idx, page));
+          });
+          return next;
+        });
+      }
 
       // Validate pagination
       if (actualTotalCount > 0) {
         const maxPage = Math.ceil(actualTotalCount / pageSize);
         console.log(
-          `[fetchAtsCandidates] Total: ${actualTotalCount}, MaxPage: ${maxPage}, CurrentPage: ${page}`
+          `[fetchAtsCandidates] Total: ${actualTotalCount}, MaxPage: ${maxPage}, CurrentPage: ${page}`,
         );
 
         // If requested page exceeds max, redirect to last page
         if (page > maxPage && page > 1) {
           console.log(
-            `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`
+            `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`,
           );
           setAtsPage(maxPage);
-          await fetchAtsCandidates(
-            jobId,
-            maxPage,
-            pageSize,
-            actualTotalCount,
-            false
-          );
-          return;
-        }
-
-        // If we got empty results on a valid page, it might be a server issue
-        if (
-          candidatesToShow.length === 0 &&
-          page <= maxPage &&
-          page > 1 &&
-          !retryMode
-        ) {
-          console.warn(
-            `[fetchAtsCandidates] Page ${page} returned 0 results but should be valid (max: ${maxPage})`
-          );
-          // Retry with fetch-all mode to work around pagination issues
-          console.log(
-            "[fetchAtsCandidates] Attempting fetch-all mode workaround..."
-          );
-          await fetchAtsCandidates(
-            jobId,
-            page,
-            pageSize,
-            actualTotalCount,
-            true
-          );
+          await fetchAtsCandidates(jobId, maxPage, pageSize, actualTotalCount);
           return;
         }
       }
@@ -430,6 +435,12 @@ export default function CreateCampaignModal({
 
   // Get the selected job's ID for ATS
   const getSelectedJobId = (): number | null => {
+    // If jobId is directly provided in initialValues, use it (for drafts)
+    if (initialValues?.jobId) {
+      return initialValues.jobId;
+    }
+
+    // Otherwise, look it up from the jobs array
     if (jobCode) {
       const selectedJob = jobs.find((j) => j.job_code === jobCode);
       if (selectedJob && selectedJob.id) {
@@ -482,6 +493,7 @@ export default function CreateCampaignModal({
   useEffect(() => {
     if (open && initialValues) {
       setJobCode(initialValues.jobCode ?? "");
+      setJobId(initialValues.jobId ?? null);
       // Map legacy jobInfo (from drafts) to jobRole for continuity
       setJobRole(initialValues.jobInfo ?? "");
     }
@@ -489,6 +501,10 @@ export default function CreateCampaignModal({
 
   const saveDraft = () => {
     try {
+      // Get jobId from the selected job
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      const jobId = selectedJob?.id ?? initialValues?.jobId;
+
       const draft = {
         id:
           initialValues?.id ??
@@ -498,6 +514,7 @@ export default function CreateCampaignModal({
         jobCode,
         // Store jobRole into legacy jobInfo field for compatibility in drafts pages
         jobInfo: jobRole,
+        jobId, // Store jobId for ATS integration
         savedAt: new Date().toISOString(),
       };
       const nextDrafts = upsertDraft(draft);
@@ -541,30 +558,81 @@ export default function CreateCampaignModal({
 
     if (!API_BASE_URL || !TENANT_ID) {
       console.error(
-        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID"
+        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID",
       );
     }
 
     setSubmitting(true);
     try {
+      // Parse skills from comma-separated strings
+      const parsedPrimarySkills = primarySkills
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      const parsedFrontendSkills = frontendSkills
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      // Get the numeric job_id from the selected job if not manually set
+      const selectedJob = jobs.find((j) => j.job_code === jobCode);
+      const finalJobId = jobId || selectedJob?.id;
+
       const response = await fetch(`${API_BASE_URL}/api/v1/campaigns`, {
         method: "POST",
         headers: {
-          "X-Tenant-ID": TENANT_ID || "",
+          "tenant-id": TENANT_ID || "",
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          // Basic Information
+          name: campaignName,
+          job_id: finalJobId,
+          job_code: jobCode,
           job_role: jobRole,
+          description: description,
+
+          // Company Details
           hiring_company_name: companyName,
-          job_location: location,
+          client_name: clientName,
+
+          // Job Details
+          job_type: jobType,
           work_mode: workMode,
-          min_experience: minExpNum,
-          max_experience: maxExpNum,
+          job_location: location,
+          multiple_locations:
+            multipleLocations.length > 0 ? multipleLocations : undefined,
+
+          // Compensation
           min_ctc: minCTCNum,
           max_ctc: maxCTCNum,
+
+          // Experience
+          min_experience: minExpNum,
+          max_experience: maxExpNum,
+
+          // Shift & Interview
+          shift_type: shiftType || undefined,
+          interview_mode: interviewMode || undefined,
+
+          // Walk-in Drive (conditional)
+          ...(isWalkinDrive && {
+            is_walkin_drive: true,
+            drive_date: driveDate,
+            drive_time: driveTime,
+            drive_location: driveLocation,
+          }),
+
+          // Voice Settings
+          voice_gender: voiceGender,
+
+          // Legacy fields
           negotiation_margin_percent: 10,
-          // Send textarea content directly; backend may accept string or object
-          job_details: jobDetails,
+          job_details: {
+            primary_skills: parsedPrimarySkills,
+            frontend_skills: parsedFrontendSkills,
+            role_type: jobRole,
+          },
           contact_email: email,
           contact_phone: phone,
         }),
@@ -582,15 +650,31 @@ export default function CreateCampaignModal({
       onCreated?.({ id: initialValues?.id, jobCode, jobInfo: jobRole });
 
       // Reset form
+      setCampaignName("");
+      setJobId(null);
       setJobCode("");
       setJobRole("");
+      setDescription("");
       setCompanyName("");
-      setLocation("");
+      setClientName("");
+      setJobType("full_time");
       setWorkMode("");
-      setMinExp("");
-      setMaxExp("");
+      setLocation("");
+      setMultipleLocations([]);
+      setLocationInput("");
       setMinCTC("");
       setMaxCTC("");
+      setMinExp("");
+      setMaxExp("");
+      setShiftType("");
+      setInterviewMode("");
+      setIsWalkinDrive(false);
+      setDriveDate("");
+      setDriveLocation("");
+      setDriveTime("");
+      setVoiceGender("female");
+      setPrimarySkills("");
+      setFrontendSkills("");
       setJobDetails("");
       setEmail("");
       setPhone("");
@@ -617,167 +701,386 @@ export default function CreateCampaignModal({
 
           <form
             onSubmit={handleSubmit}
-            className="space-y-6 mt-4 overflow-y-auto flex-1 pr-4"
+            className="space-y-8 mt-4 overflow-y-auto flex-1 pr-4"
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="jobCode">Job Code</Label>
-                <Combobox
-                  options={jobCodeOptions}
-                  value={jobCode}
-                  onValueChange={setJobCode}
-                  placeholder="Select job code"
-                  searchPlaceholder="Search by code, title, or company..."
-                  noResultsText="No job codes found."
-                  loading={jobsLoading}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="jobRole">Job Role</Label>
-                <Input
-                  id="jobRole"
-                  type="text"
-                  placeholder="e.g., Senior Python Developer"
-                  value={jobRole}
-                  onChange={(e) => setJobRole(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="companyName">Company Name</Label>
-                <Input
-                  id="companyName"
-                  type="text"
-                  placeholder="e.g., Tech Corp Inc"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  type="text"
-                  placeholder="e.g., Bangalore"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Work Mode</Label>
-                <Select value={workMode} onValueChange={setWorkMode}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select work mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="office">Office</SelectItem>
-                    <SelectItem value="remote">Remote</SelectItem>
-                    <SelectItem value="hybrid">Hybrid</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Experience (min - max years)</Label>
-                <div className="grid grid-cols-2 gap-2">
+            {/* Basic Information Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Basic Information
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="campaignName">Campaign Name *</Label>
                   <Input
-                    type="number"
-                    min={0}
-                    step={1}
-                    placeholder="Min"
-                    value={minExp}
-                    onChange={(e) => setMinExp(e.target.value)}
+                    id="campaignName"
+                    type="text"
+                    placeholder="e.g., Java FSE Hiring - Cognizant"
+                    value={campaignName}
+                    onChange={(e) => setCampaignName(e.target.value)}
                     required
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="jobId">Job ID</Label>
                   <Input
+                    id="jobId"
                     type="number"
-                    min={0}
-                    step={1}
-                    placeholder="Max"
-                    value={maxExp}
-                    onChange={(e) => setMaxExp(e.target.value)}
+                    placeholder="e.g., 123"
+                    value={jobId || ""}
+                    onChange={(e) =>
+                      setJobId(e.target.value ? Number(e.target.value) : null)
+                    }
+                  />
+                  <p className="text-xs text-gray-500">
+                    For ATS linking (optional)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="jobCode">Job Code</Label>
+                  <Combobox
+                    options={jobCodeOptions}
+                    value={jobCode}
+                    onValueChange={setJobCode}
+                    placeholder="Select job code"
+                    searchPlaceholder="Search by code, title, or company..."
+                    noResultsText="No job codes found."
+                    loading={jobsLoading}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="jobRole">Job Role *</Label>
+                  <Input
+                    id="jobRole"
+                    type="text"
+                    placeholder="e.g., Senior Python Developer"
+                    value={jobRole}
+                    onChange={(e) => setJobRole(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Additional description about the role..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Company Details Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Company Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="companyName">Hiring Company Name *</Label>
+                  <Input
+                    id="companyName"
+                    type="text"
+                    placeholder="e.g., Tech Corp Inc"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="clientName">Client Name *</Label>
+                  <Input
+                    id="clientName"
+                    type="text"
+                    placeholder="e.g., Cognizant Client"
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
                     required
                   />
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label>CTC (in lakhs, min - max)</Label>
-                <div className="grid grid-cols-2 gap-2">
+            {/* Job Details Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Job Details
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Job Type *</Label>
+                  <Select value={jobType} onValueChange={setJobType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select job type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="full_time">Full-time</SelectItem>
+                      <SelectItem value="part_time">Part-time</SelectItem>
+                      <SelectItem value="contract">Contract</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Work Mode</Label>
+                  <Select value={workMode} onValueChange={setWorkMode}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select work mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="remote">Remote</SelectItem>
+                      <SelectItem value="onsite">Onsite</SelectItem>
+                      <SelectItem value="hybrid">Hybrid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="location">Primary Location</Label>
+                  <LocationMultiSelect
+                    value={location ? [location] : []}
+                    onChange={(locs) => setLocation(locs[0] || "")}
+                    label=""
+                    placeholder="Search and select primary city..."
+                    maxLocations={1}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="locationInput">Multiple Locations</Label>
+                  <LocationMultiSelect
+                    value={multipleLocations}
+                    onChange={setMultipleLocations}
+                    label=""
+                    placeholder="Search and select Indian cities..."
+                    maxLocations={10}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Compensation Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Compensation
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Minimum CTC (in lakhs) *</Label>
                   <Input
                     type="number"
                     min={0}
                     step={0.5}
-                    placeholder="Min"
+                    placeholder="e.g., 5"
                     value={minCTC}
                     onChange={(e) => setMinCTC(e.target.value)}
                     required
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Maximum CTC (in lakhs) *</Label>
                   <Input
                     type="number"
                     min={0}
                     step={0.5}
-                    placeholder="Max"
+                    placeholder="e.g., 10"
                     value={maxCTC}
                     onChange={(e) => setMaxCTC(e.target.value)}
                     required
                   />
                 </div>
               </div>
+            </div>
 
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="jobDetails">Job Details</Label>
-                <Textarea
-                  id="jobDetails"
-                  placeholder="Describe the role, responsibilities, required skills, etc."
-                  value={jobDetails}
-                  onChange={(e) => setJobDetails(e.target.value)}
-                  rows={4}
-                />
+            {/* Experience Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Experience
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Minimum Experience (years)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="e.g., 3"
+                    value={minExp}
+                    onChange={(e) => setMinExp(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Maximum Experience (years)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="e.g., 7"
+                    value={maxExp}
+                    onChange={(e) => setMaxExp(e.target.value)}
+                  />
+                </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="email">Contact Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="hr@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
+            {/* Shift & Interview Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Shift & Interview
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Shift Type</Label>
+                  <Select value={shiftType} onValueChange={setShiftType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select shift type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Day</SelectItem>
+                      <SelectItem value="night">Night</SelectItem>
+                      <SelectItem value="rotational">Rotational</SelectItem>
+                      <SelectItem value="flexible">General/Flexible</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Interview Mode</Label>
+                  <Select
+                    value={interviewMode}
+                    onValueChange={setInterviewMode}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select interview mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="video">Video</SelectItem>
+                      <SelectItem value="telephonic">Telephonic</SelectItem>
+                      <SelectItem value="in_person">In-Person</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="phone">Contact Phone</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+919876543210"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
+            {/* Walk-in Drive Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Walk-in Drive
+              </h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isWalkinDrive"
+                    checked={isWalkinDrive}
+                    onChange={(e) => setIsWalkinDrive(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <Label
+                    htmlFor="isWalkinDrive"
+                    className="font-normal cursor-pointer"
+                  >
+                    This is a walk-in drive
+                  </Label>
+                </div>
+
+                {isWalkinDrive && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6 border-l-2 border-primary-200">
+                    <div className="space-y-2">
+                      <Label htmlFor="driveDate">Drive Date</Label>
+                      <Input
+                        id="driveDate"
+                        type="date"
+                        value={driveDate}
+                        onChange={(e) => setDriveDate(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="driveTime">Drive Time</Label>
+                      <Input
+                        id="driveTime"
+                        type="text"
+                        placeholder="e.g., 10:00 AM - 4:00 PM"
+                        value={driveTime}
+                        onChange={(e) => setDriveTime(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="driveLocation">
+                        Drive Location (Venue Address)
+                      </Label>
+                      <Textarea
+                        id="driveLocation"
+                        placeholder="Enter the venue address for the walk-in drive"
+                        value={driveLocation}
+                        onChange={(e) => setDriveLocation(e.target.value)}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Voice Settings Section */}
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                Voice Settings
+              </h3>
+              <div className="space-y-3">
+                <Label>Voice Gender</Label>
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="voiceFemale"
+                      name="voiceGender"
+                      value="female"
+                      checked={voiceGender === "female"}
+                      onChange={(e) => setVoiceGender("female")}
+                      className="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <Label
+                      htmlFor="voiceFemale"
+                      className="font-normal cursor-pointer"
+                    >
+                      Female (default)
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      id="voiceMale"
+                      name="voiceGender"
+                      value="male"
+                      checked={voiceGender === "male"}
+                      onChange={(e) => setVoiceGender("male")}
+                      className="h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <Label
+                      htmlFor="voiceMale"
+                      className="font-normal cursor-pointer"
+                    >
+                      Male
+                    </Label>
+                  </div>
+                </div>
               </div>
             </div>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button
-                type="button"
-                variant="default"
-                className="bg-primary-600 text-white hover:bg-primary-700"
-                onClick={() => setShowAddDialog(true)}
-              >
-                Add candidates
-              </Button>
               <Button
                 type="button"
                 variant="outline"
@@ -791,6 +1094,12 @@ export default function CreateCampaignModal({
                 disabled={!jobCode && !jobRole}
               >
                 Save as Draft
+              </Button>
+              <Button
+                type="submit"
+                disabled={!jobCode || !jobRole || submitting}
+              >
+                {submitting ? "Creating..." : "Create Campaign"}
               </Button>
             </div>
           </form>
@@ -907,7 +1216,7 @@ export default function CreateCampaignModal({
                         className="h-6 px-1 text-gray-500 hover:text-gray-700"
                         onClick={() =>
                           setManualResumes((prev) =>
-                            prev.filter((_, idx) => idx !== i)
+                            prev.filter((_, idx) => idx !== i),
                           )
                         }
                       >
@@ -1060,7 +1369,7 @@ export default function CreateCampaignModal({
               onChange={(e) => {
                 setUploadError("");
                 const files = Array.from(e.target.files ?? []).filter(
-                  isAccepted
+                  isAccepted,
                 );
                 if (files.length > 50) {
                   setUploadError("You can upload a maximum of 50 files.");
@@ -1081,7 +1390,7 @@ export default function CreateCampaignModal({
                 e.stopPropagation();
                 setUploadError("");
                 let files = Array.from(e.dataTransfer.files ?? []).filter(
-                  isAccepted
+                  isAccepted,
                 );
                 if (files.length === 0) return;
                 const combined = [...bulkFiles, ...files];
@@ -1138,7 +1447,7 @@ export default function CreateCampaignModal({
                       className="h-6 px-1 text-gray-500 hover:text-gray-700"
                       onClick={() =>
                         setBulkFiles((prev) =>
-                          prev.filter((_, idx) => idx !== i)
+                          prev.filter((_, idx) => idx !== i),
                         )
                       }
                     >
@@ -1173,10 +1482,10 @@ export default function CreateCampaignModal({
                     if (bulkFiles.length === 0) return;
                     setManualResumes((prev) => {
                       const existingKeys = new Set(
-                        prev.map((f) => `${f.name}-${f.size}`)
+                        prev.map((f) => `${f.name}-${f.size}`),
                       );
                       const toAdd = bulkFiles.filter(
-                        (f) => !existingKeys.has(`${f.name}-${f.size}`)
+                        (f) => !existingKeys.has(`${f.name}-${f.size}`),
                       );
                       return [...toAdd, ...prev];
                     });
@@ -1296,42 +1605,79 @@ export default function CreateCampaignModal({
 
           {!atsCandidatesLoading && atsCandidates.length > 0 && (
             <>
-              <div className="flex items-center justify-between px-1 pb-2 border-b">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                    checked={
-                      selectedCandidates.size === atsCandidates.length &&
-                      atsCandidates.length > 0
-                    }
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedCandidates(
-                          new Set(atsCandidates.map((_, i) => i))
-                        );
-                      } else {
-                        setSelectedCandidates(new Set());
+              <div className="flex flex-col gap-3 px-1 pb-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      checked={
+                        selectAllPages ||
+                        (atsCandidates.length > 0 &&
+                          atsCandidates.every((candidate, idx) =>
+                            selectedCandidates.has(
+                              getCandidateKey(candidate, idx),
+                            ),
+                          ))
                       }
-                    }}
-                  />
-                  <span className="text-sm text-gray-700">
-                    {selectedCandidates.size > 0
-                      ? `${selectedCandidates.size} selected`
-                      : "Select all"}
-                  </span>
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          // Enable select-all across pages and add current page
+                          setSelectAllPages(true);
+                          setSelectedCandidates((prev) => {
+                            const next = new Set(prev);
+                            atsCandidates.forEach((candidate, idx) => {
+                              next.add(getCandidateKey(candidate, idx));
+                            });
+                            return next;
+                          });
+                        } else {
+                          setSelectAllPages(false);
+                          setSelectedCandidates(new Set());
+                        }
+                      }}
+                    />
+                    <span className="text-sm text-gray-700">
+                      {selectAllPages
+                        ? `All${
+                            atsTotalCount ? ` (${atsTotalCount})` : ""
+                          } selected`
+                        : selectedCandidates.size > 0
+                          ? `${selectedCandidates.size} selected`
+                          : "Select all"}
+                    </span>
+                  </div>
+                  {(selectAllPages || selectedCandidates.size > 0) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-gray-600 hover:text-gray-900"
+                      onClick={() => {
+                        setSelectAllPages(false);
+                        setSelectedCandidates(new Set());
+                      }}
+                    >
+                      Clear selection
+                    </Button>
+                  )}
                 </div>
-                {selectedCandidates.size > 0 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-gray-600 hover:text-gray-900"
-                    onClick={() => setSelectedCandidates(new Set())}
-                  >
-                    Clear selection
-                  </Button>
-                )}
+
+                <div className="flex flex-col gap-2">
+                  <SearchBox
+                    value={atsSearch}
+                    onChange={setAtsSearch}
+                    onClear={() => setAtsSearch("")}
+                    placeholder="Search candidates by name, email, mobile, job code, or location"
+                    containerClassName="w-full"
+                    inputClassName="rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:ring-primary-500"
+                  />
+                  {atsSearch && (
+                    <div className="text-xs text-gray-500">
+                      Showing results for "{atsSearch}"
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="overflow-auto flex-1 -mx-6 px-6">
@@ -1364,83 +1710,107 @@ export default function CreateCampaignModal({
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {atsCandidates
-                        .slice(0, atsPageSize)
-                        .map((candidate: any, idx: number) => (
-                          <tr
-                            key={idx}
-                            className={`hover:bg-gray-50 transition-colors cursor-pointer ${
-                              selectedCandidates.has(idx) ? "bg-blue-50" : ""
-                            }`}
-                            onClick={() => {
-                              const newSelected = new Set(selectedCandidates);
-                              if (newSelected.has(idx)) {
-                                newSelected.delete(idx);
-                              } else {
-                                newSelected.add(idx);
-                              }
-                              setSelectedCandidates(newSelected);
-                            }}
-                          >
-                            <td className="px-3 py-4">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                                checked={selectedCandidates.has(idx)}
-                                onChange={() => {}}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </td>
-                            <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
-                              {candidate.submission_on
-                                ? new Date(
-                                    candidate.submission_on
-                                  ).toLocaleDateString("en-US", {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                  })
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-4">
-                              <div className="font-medium text-gray-900">
-                                {candidate.candidate_name || "—"}
-                              </div>
-                              {candidate.candidate_email && (
-                                <div className="text-xs text-gray-500 mt-0.5">
-                                  {candidate.candidate_email}
+                        .filter((candidate) => {
+                          if (!atsSearch.trim()) return true;
+                          const q = atsSearch.toLowerCase();
+                          const fields = [
+                            candidate.candidate_name,
+                            candidate.candidate_email,
+                            candidate.candidate_mobile,
+                            candidate.candidate_location,
+                            candidate.job_code,
+                            candidate.job_title,
+                          ]
+                            .filter(Boolean)
+                            .map((v: string) => v.toLowerCase());
+                          return fields.some((field: string) =>
+                            field.includes(q),
+                          );
+                        })
+                        .map((candidate: any, idx: number) => {
+                          const key = getCandidateKey(candidate, idx);
+                          const isSelected =
+                            selectAllPages || selectedCandidates.has(key);
+                          return (
+                            <tr
+                              key={key}
+                              className={`hover:bg-gray-50 transition-colors cursor-pointer ${
+                                isSelected ? "bg-blue-50" : ""
+                              }`}
+                              onClick={() => {
+                                setSelectedCandidates((prev) => {
+                                  const next = new Set(prev);
+                                  if (isSelected) {
+                                    next.delete(key);
+                                    setSelectAllPages(false);
+                                  } else {
+                                    next.add(key);
+                                  }
+                                  return next;
+                                });
+                              }}
+                            >
+                              <td className="px-3 py-4">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                  checked={isSelected}
+                                  onChange={() => {}}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </td>
+                              <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
+                                {candidate.submission_on
+                                  ? new Date(
+                                      candidate.submission_on,
+                                    ).toLocaleDateString("en-US", {
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    })
+                                  : "—"}
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="font-medium text-gray-900">
+                                  {candidate.candidate_name || "—"}
                                 </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-4 text-gray-700 whitespace-nowrap">
-                              {candidate.candidate_mobile || "—"}
-                            </td>
-                            <td className="px-3 py-4 text-gray-600 text-xs">
-                              {candidate.candidate_location || "—"}
-                            </td>
-                            <td className="px-3 py-4">
-                              <div className="font-medium text-gray-900 text-xs">
-                                {candidate.job_code || "—"}
-                              </div>
-                              {candidate.job_title && (
-                                <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
-                                  {candidate.job_title}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-3 py-4">
-                              <div className="text-gray-700 text-xs">
-                                {candidate.submitted_by_name || "—"}
-                              </div>
-                              {candidate.updated_by_name &&
-                                candidate.updated_by_name !==
-                                  candidate.submitted_by_name && (
+                                {candidate.candidate_email && (
                                   <div className="text-xs text-gray-500 mt-0.5">
-                                    Updated: {candidate.updated_by_name}
+                                    {candidate.candidate_email}
                                   </div>
                                 )}
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="px-3 py-4 text-gray-700 whitespace-nowrap">
+                                {candidate.candidate_mobile || "—"}
+                              </td>
+                              <td className="px-3 py-4 text-gray-600 text-xs">
+                                {candidate.candidate_location || "—"}
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="font-medium text-gray-900 text-xs">
+                                  {candidate.job_code || "—"}
+                                </div>
+                                {candidate.job_title && (
+                                  <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
+                                    {candidate.job_title}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-4">
+                                <div className="text-gray-700 text-xs">
+                                  {candidate.submitted_by_name || "—"}
+                                </div>
+                                {candidate.updated_by_name &&
+                                  candidate.updated_by_name !==
+                                    candidate.submitted_by_name && (
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      Updated: {candidate.updated_by_name}
+                                    </div>
+                                  )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
@@ -1465,13 +1835,12 @@ export default function CreateCampaignModal({
                         onClick={async () => {
                           const newPage = atsPage - 1;
                           setAtsPage(newPage);
-                          setSelectedCandidates(new Set()); // Clear selection on page change
                           const jobId = getSelectedJobId();
                           if (jobId)
                             await fetchAtsCandidates(
                               jobId,
                               newPage,
-                              atsPageSize
+                              atsPageSize,
                             );
                         }}
                       >
@@ -1492,13 +1861,12 @@ export default function CreateCampaignModal({
                         onClick={async () => {
                           const newPage = atsPage + 1;
                           setAtsPage(newPage);
-                          setSelectedCandidates(new Set()); // Clear selection on page change
                           const jobId = getSelectedJobId();
                           if (jobId)
                             await fetchAtsCandidates(
                               jobId,
                               newPage,
-                              atsPageSize
+                              atsPageSize,
                             );
                         }}
                       >
@@ -1513,10 +1881,17 @@ export default function CreateCampaignModal({
 
           <div className="border-t pt-4 flex flex-col sm:flex-row justify-between items-center gap-3">
             <div className="text-sm text-gray-600">
-              {selectedCandidates.size > 0 && (
+              {(selectAllPages || selectedCandidates.size > 0) && (
                 <span className="font-medium text-primary-600">
-                  {selectedCandidates.size} candidate
-                  {selectedCandidates.size !== 1 ? "s" : ""} ready to import
+                  {selectAllPages && atsTotalCount > 0
+                    ? atsTotalCount
+                    : selectedCandidates.size}{" "}
+                  candidate
+                  {(selectAllPages && atsTotalCount > 1) ||
+                  (!selectAllPages && selectedCandidates.size !== 1)
+                    ? "s"
+                    : ""}{" "}
+                  ready to import
                 </span>
               )}
             </div>
@@ -1526,6 +1901,7 @@ export default function CreateCampaignModal({
                 variant="outline"
                 onClick={() => {
                   setShowAtsCandidatesModal(false);
+                  setSelectAllPages(false);
                   setSelectedCandidates(new Set());
                 }}
               >
@@ -1533,12 +1909,14 @@ export default function CreateCampaignModal({
               </Button>
               <Button
                 type="button"
-                disabled={selectedCandidates.size === 0}
+                disabled={!selectAllPages && selectedCandidates.size === 0}
                 onClick={() => {
                   // TODO: Implement import functionality
-                  const selected = atsCandidates.filter((_, idx) =>
-                    selectedCandidates.has(idx)
-                  );
+                  const selected = selectAllPages
+                    ? atsCandidates
+                    : atsCandidates.filter((candidate, idx) =>
+                        selectedCandidates.has(getCandidateKey(candidate, idx)),
+                      );
                   console.log("Importing candidates:", selected);
                   // For now, just close the modal
                   setShowAtsCandidatesModal(false);
@@ -1546,9 +1924,13 @@ export default function CreateCampaignModal({
                 }}
               >
                 Import{" "}
-                {selectedCandidates.size > 0
-                  ? `(${selectedCandidates.size})`
-                  : "Selected"}
+                {selectAllPages
+                  ? atsTotalCount > 0
+                    ? `(${atsTotalCount})`
+                    : "(All)"
+                  : selectedCandidates.size > 0
+                    ? `(${selectedCandidates.size})`
+                    : "Selected"}
               </Button>
             </div>
           </div>

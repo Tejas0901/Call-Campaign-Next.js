@@ -1,0 +1,1589 @@
+"use client";
+
+import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useRef } from "react";
+import {
+  Mail,
+  MessageSquare,
+  Eye,
+  MousePointerClick,
+  ShoppingCart,
+  ArrowLeft,
+  Music,
+  Loader2,
+  Play,
+  Pause,
+  Square,
+} from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { campaignData } from "@/data/campaignData";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import Sidebar from "@/components/Sidebar";
+import Topbar from "@/components/Topbar";
+import CandidatesTable, {
+  CandidateRow,
+} from "@/components/ui/candidates-table";
+import AddCandidatesWorkflow from "@/components/campaigns/AddCandidatesWorkflow";
+import { filterJobsByCode } from "@/lib/api-integrations";
+import { SearchBox } from "@/components/ui/search-box";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+export default function MigrationDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const campaignId = params.id as string;
+
+  const [campaign, setCampaign] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const [hyrexAuthToken, setHyrexAuthToken] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [candidates, setCandidates] = useState<CandidateRow[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
+  const [candidatesError, setCandidatesError] = useState<string | null>(null);
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [showScriptsDialog, setShowScriptsDialog] = useState(false);
+  const [audioGenerating, setAudioGenerating] = useState(false);
+  const [showAudioPreviewDialog, setShowAudioPreviewDialog] = useState(false);
+  const [audioScripts, setAudioScripts] = useState<any[]>([]);
+  const [audioScriptsLoading, setAudioScriptsLoading] = useState(false);
+  const [audioApproving, setAudioApproving] = useState(false);
+  const [currentPlayingUrl, setCurrentPlayingUrl] = useState<string | null>(
+    null,
+  );
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [dialerActivating, setDialerActivating] = useState(false);
+  const [dialerStarting, setDialerStarting] = useState(false);
+  const [dialerPausing, setDialerPausing] = useState(false);
+  const [dialerResuming, setDialerResuming] = useState(false);
+  const [dialerStopping, setDialerStopping] = useState(false);
+  const { toast } = useToast();
+
+  // Get auth tokens on mount
+  useEffect(() => {
+    try {
+      const stored =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("auth-token")
+          : null;
+      if (stored) {
+        setAuthToken(stored);
+      }
+
+      const hyrexStored =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("hyrex-auth-token")
+          : null;
+      if (hyrexStored) {
+        setHyrexAuthToken(hyrexStored);
+      }
+    } catch (e) {
+      console.error("[MigrationDetailPage] Error reading auth token:", e);
+    }
+  }, []);
+
+  // Fetch campaign data from API or fallback to static data
+  useEffect(() => {
+    const fetchCampaign = async () => {
+      // First, try to find in static data by numeric ID
+      const numericId = parseInt(campaignId);
+      if (!isNaN(numericId)) {
+        const foundCampaign = campaignData.campaigns.find(
+          (camp: any) => camp.id === numericId,
+        );
+        if (foundCampaign) {
+          console.log(
+            "[MigrationDetailPage] Found in static data:",
+            foundCampaign,
+          );
+          setCampaign(foundCampaign);
+          setLoading(false);
+          return;
+        }
+      }
+
+      // For UUID campaigns, wait for auth token before trying API
+      if (!authToken) {
+        console.log("[MigrationDetailPage] Waiting for auth token...");
+        return;
+      }
+
+      // Try API with auth token
+      try {
+        setLoading(true);
+        const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+        console.log("[MigrationDetailPage] Fetching campaign:", {
+          campaignId,
+          TENANT_ID,
+          hasToken: !!authToken,
+        });
+
+        if (!TENANT_ID) {
+          console.error("[MigrationDetailPage] Missing TENANT_ID");
+          setCampaign(null);
+          setLoading(false);
+          return;
+        }
+
+        // Use Next.js API route as proxy to avoid CORS issues
+        const response = await fetch(`/api/campaigns/${campaignId}`, {
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+
+        console.log(
+          "[MigrationDetailPage] Response status:",
+          response.status,
+          response.statusText,
+        );
+
+        // Check content-type but try parsing anyway
+        const contentType = response.headers.get("content-type");
+        console.log("[MigrationDetailPage] Content-Type:", contentType);
+
+        let responseData;
+        try {
+          const responseText = await response.text();
+          console.log("[MigrationDetailPage] Raw response:", responseText);
+          responseData = responseText ? JSON.parse(responseText) : {};
+          console.log(
+            "[MigrationDetailPage] Parsed API response:",
+            responseData,
+          );
+        } catch (parseError) {
+          console.error(
+            "[MigrationDetailPage] Failed to parse JSON:",
+            parseError,
+          );
+          setCampaign(null);
+          setLoading(false);
+          return;
+        }
+
+        if (response.ok) {
+          // Extract campaign data from nested response structure
+          const fetchedCampaign = responseData.data || responseData;
+          console.log(
+            "[MigrationDetailPage] Extracted campaign:",
+            fetchedCampaign,
+          );
+          setCampaign(fetchedCampaign);
+        } else {
+          console.error(
+            "[MigrationDetailPage] API returned error status:",
+            response.status,
+          );
+          console.error(
+            "[MigrationDetailPage] Error response data:",
+            responseData,
+          );
+          setCampaign(null);
+        }
+      } catch (error) {
+        console.error("[MigrationDetailPage] Error fetching campaign:", error);
+        setCampaign(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCampaign();
+  }, [campaignId, authToken]);
+
+  // Fetch job_id from Hyrex API when we have job_code
+  useEffect(() => {
+    const fetchJobId = async () => {
+      const jobCode = campaign?.job_code || campaign?.jobCode;
+      if (!jobCode || !hyrexAuthToken) {
+        console.log("[MigrationDetailPage] Skipping job_id fetch:", {
+          hasJobCode: !!jobCode,
+          hasHyrexToken: !!hyrexAuthToken,
+        });
+        return;
+      }
+
+      try {
+        console.log(
+          "[MigrationDetailPage] Fetching job_id for job_code:",
+          jobCode,
+          "with Hyrex token:",
+          !!hyrexAuthToken,
+        );
+        const response = await filterJobsByCode(jobCode, hyrexAuthToken);
+        console.log("[MigrationDetailPage] Job lookup response:", response);
+
+        if (response.results && response.results.length > 0) {
+          const fetchedJobId = response.results[0].id;
+          console.log("[MigrationDetailPage] Found job_id:", fetchedJobId);
+          setJobId(fetchedJobId);
+        } else {
+          console.warn("[MigrationDetailPage] No job found for code:", jobCode);
+          setJobId(null);
+        }
+      } catch (error) {
+        console.error("[MigrationDetailPage] Error fetching job_id:", error);
+        setJobId(null);
+      }
+    };
+
+    fetchJobId();
+  }, [campaign?.job_code, campaign?.jobCode, hyrexAuthToken]);
+
+  // Fetch contacts for this campaign
+  useEffect(() => {
+    const fetchContacts = async () => {
+      if (!authToken || !campaignId) {
+        console.log(
+          "[MigrationDetailPage] Skipping contacts fetch: missing token or campaignId",
+        );
+        return;
+      }
+
+      setCandidatesLoading(true);
+      setCandidatesError(null);
+
+      try {
+        const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+        if (!TENANT_ID) {
+          throw new Error("Missing TENANT_ID configuration");
+        }
+
+        console.log(
+          "[MigrationDetailPage] Fetching contacts for campaign:",
+          campaignId,
+        );
+
+        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+        if (!baseUrl) {
+          throw new Error("Missing NEXT_PUBLIC_API_BASE_URL configuration");
+        }
+
+        const response = await fetch(
+          `${baseUrl.replace(/\/$/, "")}/api/v1/contacts/${campaignId}`,
+          {
+            method: "GET",
+            headers: {
+              "tenant-id": TENANT_ID,
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${authToken}`,
+              "ngrok-skip-browser-warning": "69420",
+            },
+          },
+        );
+
+        const contentType = response.headers.get("content-type") || "";
+
+        // For non-JSON responses, read the text once so we don't exhaust the stream twice
+        const isJson = contentType.includes("application/json");
+        const responseText = isJson ? null : await response.text();
+
+        if (!response.ok) {
+          if (isJson) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(
+              errorData?.error ||
+                errorData?.message ||
+                `Failed to fetch contacts: ${response.status}`,
+            );
+          }
+
+          console.error(
+            "[MigrationDetailPage] Non-JSON error response:",
+            (responseText || "").substring(0, 300),
+          );
+          throw new Error(
+            `Failed to fetch contacts (${response.status}): ${(responseText || "").substring(0, 160)}`,
+          );
+        }
+
+        let result: any;
+        try {
+          if (!isJson) {
+            console.error(
+              "[MigrationDetailPage] Expected JSON but got:",
+              (responseText || "").substring(0, 300),
+            );
+            throw new Error("Contacts API did not return JSON");
+          }
+
+          result = await response.json();
+        } catch (parseError) {
+          console.error(
+            "[MigrationDetailPage] Failed to parse contacts JSON:",
+            parseError,
+          );
+          throw new Error("Failed to parse contacts response as JSON");
+        }
+        console.log("[MigrationDetailPage] Contacts response:", result);
+
+        // Transform API response to CandidateRow format
+        if (result.success && result.data?.contacts) {
+          const transformedCandidates: CandidateRow[] =
+            result.data.contacts.map((contact: any) => ({
+              id: contact.id,
+              name: contact.candidate_name || "Unknown",
+              phone: contact.phone_number || "—",
+              email: contact.email || "—",
+              resume: contact.resume_url || null,
+              resumeFileName: contact.resume_url
+                ? contact.resume_url.split("/").pop()
+                : null,
+              candidateId: contact.ats_candidate_id || contact.id,
+            }));
+          setCandidates(transformedCandidates);
+          console.log(
+            "[MigrationDetailPage] Transformed candidates:",
+            transformedCandidates,
+          );
+        } else {
+          setCandidates([]);
+        }
+      } catch (err: any) {
+        console.error("[MigrationDetailPage] Error fetching contacts:", err);
+        setCandidatesError(err?.message || "Failed to fetch contacts");
+        setCandidates([]);
+      } finally {
+        setCandidatesLoading(false);
+      }
+    };
+
+    fetchContacts();
+  }, [authToken, campaignId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-2xl font-semibold">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!campaign) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-2xl font-semibold text-red-500">
+          Campaign not found
+        </div>
+      </div>
+    );
+  }
+
+  const getIconComponent = (icon: string) => {
+    switch (icon) {
+      case "Mail":
+        return <Mail className="w-5 h-5 text-white" />;
+      case "MessageSquare":
+        return <MessageSquare className="w-5 h-5 text-white" />;
+      default:
+        return <Mail className="w-5 h-5 text-white" />;
+    }
+  };
+
+  // Map API status to display status
+  const getDisplayStatus = (status: string) => {
+    if (status === "active") return "Running";
+    if (status === "draft") return "Paused";
+    return status;
+  };
+
+  const displayStatus = campaign?.status
+    ? getDisplayStatus(campaign.status)
+    : "Unknown";
+
+  const statusStyles: Record<string, { container: string; dot: string }> = {
+    Running: { container: "bg-green-50 text-green-700", dot: "bg-green-500" },
+    Closed: { container: "bg-red-50 text-red-700", dot: "bg-red-500" },
+    Paused: { container: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
+  };
+
+  const statusClass = statusStyles[displayStatus] || {
+    container: "bg-gray-50 text-gray-700",
+    dot: "bg-gray-500",
+  };
+
+  const filteredCandidates = candidates.filter((candidate) => {
+    if (!candidateSearch.trim()) return true;
+    const query = candidateSearch.toLowerCase();
+    const fields = [
+      candidate.name,
+      candidate.email,
+      candidate.phone,
+      candidate.candidateId,
+      candidate.resumeFileName,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase());
+    return fields.some((field) => field.includes(query));
+  });
+
+  const fetchAudioScripts = async () => {
+    setAudioScriptsLoading(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        throw new Error("API Base URL or Tenant ID is not configured");
+      }
+
+      if (!authToken) {
+        throw new Error("Auth token is missing");
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/audio-preview`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to fetch audio preview",
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.success && result.data?.campaign_scripts) {
+        // Transform the audio URLs to absolute URLs
+        const transformedScripts = result.data.campaign_scripts.map(
+          (audio: any) => {
+            let playUrl = audio.play_url;
+
+            // If the URL is relative (starts with /), convert to absolute
+            if (playUrl && playUrl.startsWith("/")) {
+              // Use the API base URL and append the relative path
+              playUrl = `${API_BASE_URL.replace(/\/$/, "")}${playUrl}`;
+
+              console.log("[Audio URL Transform]", {
+                relative: audio.play_url,
+                absolute: playUrl,
+                filename: audio.filename,
+              });
+            }
+
+            return {
+              ...audio,
+              play_url: playUrl,
+            };
+          },
+        );
+
+        setAudioScripts(transformedScripts);
+        setShowAudioPreviewDialog(true);
+      } else {
+        throw new Error(result.message || "Failed to fetch audio scripts");
+      }
+    } catch (error: any) {
+      console.error("[MigrationDetailPage] Fetch audio scripts error:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to fetch audio scripts",
+        variant: "destructive",
+      });
+    } finally {
+      setAudioScriptsLoading(false);
+    }
+  };
+
+  const handleGenerateAudio = async () => {
+    setAudioGenerating(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!authToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Auth token is missing",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/generate-audio`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to generate audio",
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Audio generated successfully!",
+          variant: "default",
+        });
+        setShowScriptsDialog(false);
+
+        // Fetch and display the generated audio scripts
+        await fetchAudioScripts();
+      } else {
+        throw new Error(result.message || "Audio generation failed");
+      }
+    } catch (error: any) {
+      console.error("[MigrationDetailPage] Audio generation error:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to generate audio",
+        variant: "destructive",
+      });
+    } finally {
+      setAudioGenerating(false);
+    }
+  };
+
+  const toggleAudioPlayback = async (playUrl: string) => {
+    try {
+      // Validate URL
+      if (!playUrl || playUrl.trim() === "") {
+        toast({
+          title: "Error",
+          description: "Invalid audio URL",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+
+        // Add event listeners for the audio element
+        audioRef.current.addEventListener("play", () => {
+          setIsAudioPlaying(true);
+        });
+
+        audioRef.current.addEventListener("pause", () => {
+          setIsAudioPlaying(false);
+        });
+
+        audioRef.current.addEventListener("ended", () => {
+          setIsAudioPlaying(false);
+          setCurrentPlayingUrl(null);
+        });
+
+        audioRef.current.addEventListener("error", (e) => {
+          const audioElement = audioRef.current;
+          const errorCode = audioElement?.error?.code;
+          const errorMessage = audioElement?.error?.message;
+
+          console.error("[Audio Error] Details:", {
+            code: errorCode,
+            message: errorMessage,
+            src: audioElement?.src,
+            networkState: audioElement?.networkState,
+            readyState: audioElement?.readyState,
+          });
+
+          let userMessage = "Failed to load audio file";
+
+          // Error codes: 1=MEDIA_ERR_ABORTED, 2=MEDIA_ERR_NETWORK, 3=MEDIA_ERR_DECODE, 4=MEDIA_ERR_SRC_NOT_SUPPORTED
+          switch (errorCode) {
+            case 1:
+              userMessage = "Audio loading was aborted";
+              break;
+            case 2:
+              userMessage = "Network error loading audio";
+              break;
+            case 3:
+              userMessage = "Audio format is not supported";
+              break;
+            case 4:
+              userMessage = "Audio source not found or not supported";
+              break;
+            default:
+              userMessage = errorMessage || "Failed to load audio file";
+          }
+
+          toast({
+            title: "Audio Error",
+            description: userMessage,
+            variant: "destructive",
+          });
+          setIsAudioPlaying(false);
+          setCurrentPlayingUrl(null);
+        });
+      }
+
+      // If clicking the same audio, toggle play/pause
+      if (currentPlayingUrl === playUrl && audioRef.current.src) {
+        if (isAudioPlaying) {
+          audioRef.current.pause();
+        } else {
+          audioRef.current.play().catch((err) => {
+            console.error("[Audio Play Error]", err);
+          });
+        }
+      } else {
+        // Play different audio
+        console.log("[Audio Playback] Loading audio:", playUrl);
+
+        try {
+          // Fetch the audio file through the proxy API
+          const fetchUrl = playUrl.startsWith("http")
+            ? `/api/audio-proxy?url=${encodeURIComponent(playUrl)}`
+            : playUrl.startsWith("/")
+              ? `/api/audio-proxy?url=${encodeURIComponent(playUrl)}`
+              : playUrl;
+
+          console.log("[Audio Playback] Fetching from:", fetchUrl);
+
+          const response = await fetch(fetchUrl, {
+            method: "GET",
+            headers: {
+              "x-tenant-id": process.env.NEXT_PUBLIC_TENANT_ID || "",
+              Authorization: `Bearer ${authToken}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch audio: ${response.status} ${response.statusText}`,
+            );
+          }
+
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+
+          console.log("[Audio Playback] Created object URL for audio blob");
+
+          audioRef.current.src = audioUrl;
+          audioRef.current.load();
+
+          audioRef.current.play().catch((err) => {
+            console.error("[Audio Play Error]", err);
+            if (err.name === "NotAllowedError") {
+              toast({
+                title: "Playback Error",
+                description: "Playback was prevented by browser policy",
+                variant: "destructive",
+              });
+            } else if (err.name === "NotSupportedError") {
+              toast({
+                title: "Playback Error",
+                description: "Audio format is not supported",
+                variant: "destructive",
+              });
+            }
+          });
+
+          setCurrentPlayingUrl(playUrl);
+        } catch (fetchError: any) {
+          console.error("[Audio Fetch Error]", fetchError);
+          toast({
+            title: "Error",
+            description: fetchError?.message || "Failed to load audio file",
+            variant: "destructive",
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error("[Audio Playback Error]", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to play audio",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleApproveAudio = async () => {
+    setAudioApproving(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!authToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Auth token is missing",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/approve-audio`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to approve audio",
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Audio approved successfully!",
+          variant: "default",
+        });
+        setShowAudioPreviewDialog(false);
+        console.log("[MigrationDetailPage] Audio approved:", result.data);
+      } else {
+        throw new Error(result.message || "Audio approval failed");
+      }
+    } catch (error: any) {
+      console.error("[MigrationDetailPage] Audio approval error:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to approve audio",
+        variant: "destructive",
+      });
+    } finally {
+      setAudioApproving(false);
+    }
+  };
+
+  const handleActivateAndStartDialer = async () => {
+    setDialerActivating(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!authToken) {
+        toast({
+          title: "Authentication Error",
+          description: "Auth token is missing",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Step 1: Activate Campaign
+      const activateResponse = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify({
+            status: "active",
+          }),
+        },
+      );
+
+      if (!activateResponse.ok) {
+        const errorData = await activateResponse.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to activate campaign",
+        );
+      }
+
+      const activateResult = await activateResponse.json();
+      console.log("[Campaign Activated]:", activateResult);
+
+      toast({
+        title: "Campaign Activated",
+        description: "Campaign is now active and ready for dialer",
+        variant: "default",
+      });
+
+      // Step 2: Start Dialer
+      setDialerStarting(true);
+      const dialerResponse = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/start`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify({
+            campaign_id: campaignId,
+            max_concurrent_calls: 5,
+          }),
+        },
+      );
+
+      if (!dialerResponse.ok) {
+        const errorData = await dialerResponse.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to start dialer",
+        );
+      }
+
+      const dialerResult = await dialerResponse.json();
+      console.log("[Dialer Started]:", dialerResult);
+
+      if (dialerResult.success) {
+        const data = dialerResult.data;
+        toast({
+          title: "Dialer Started!",
+          description: `${data.calls_initiated || 0} calls initiated. ${data.total_contacts || 0} total contacts in queue.`,
+          variant: "default",
+        });
+
+        // Update campaign status locally
+        setCampaign((prev: any) => ({
+          ...prev,
+          status: "active",
+        }));
+
+        // Navigate to dashboard or show success message
+        setTimeout(() => {
+          router.push("/campaigns/migrations");
+        }, 2000);
+      } else {
+        throw new Error(dialerResult.message || "Failed to start dialer");
+      }
+    } catch (error: any) {
+      console.error("[Activate & Start Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description:
+          error?.message || "Failed to activate campaign and start dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerActivating(false);
+      setDialerStarting(false);
+    }
+  };
+
+  const handlePauseDialer = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDialerPausing(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/pause/${campaignId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to pause dialer",
+        );
+      }
+
+      toast({
+        title: "Dialer Paused",
+        description: "Dialer is now paused.",
+        variant: "default",
+      });
+    } catch (error: any) {
+      console.error("[Pause Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to pause dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerPausing(false);
+    }
+  };
+
+  const handleResumeDialer = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDialerResuming(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/resume/${campaignId}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to resume dialer",
+        );
+      }
+
+      toast({
+        title: "Dialer Resumed",
+        description: "Dialer has been resumed.",
+        variant: "default",
+      });
+    } catch (error: any) {
+      console.error("[Resume Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to resume dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerResuming(false);
+    }
+  };
+
+  const handleStopDialer = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDialerStopping(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/dialer/stop`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify({ campaign_id: campaignId }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to stop dialer",
+        );
+      }
+
+      toast({
+        title: "Dialer Stopped",
+        description: "Dialer has been stopped.",
+        variant: "default",
+      });
+    } catch (error: any) {
+      console.error("[Stop Dialer Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to stop dialer",
+        variant: "destructive",
+      });
+    } finally {
+      setDialerStopping(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar isOpen={sidebarOpen} />
+        <div className="flex-1 flex flex-col">
+          <Topbar onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
+          <div className="flex-1 p-4 md:p-8">
+            <div className="max-w-7xl mx-auto">
+              {/* Back Button */}
+              <div className="mb-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push("/campaigns/migrations")}
+                  className="gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Back to Migrations
+                </Button>
+              </div>
+
+              {/* Header */}
+              <div className="mb-8">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-4">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className={`w-14 h-14 ${
+                        campaign.iconBg || "bg-primary-100"
+                      } rounded-xl flex items-center justify-center`}
+                    >
+                      {campaign.icon ? (
+                        getIconComponent(campaign.icon)
+                      ) : (
+                        <Mail className="w-5 h-5 text-white" />
+                      )}
+                    </div>
+                    <div>
+                      <h1 className="text-3xl font-bold text-gray-900">
+                        {campaign.name ||
+                          campaign.job_role ||
+                          "Campaign Details"}
+                      </h1>
+                      <div className="flex items-center gap-3 mt-2">
+                        <span
+                          className={`px-3 py-1 text-sm font-medium rounded-full flex items-center gap-1 ${statusClass.container}`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full ${statusClass.dot}`}
+                          ></span>
+                          {displayStatus}
+                        </span>
+                        <span className="text-gray-600">
+                          {campaign.messagesCount || 0} messages
+                        </span>
+                        <span className="text-gray-600">
+                          {campaign.actionsCount || 0} actions
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <AddCandidatesWorkflow
+                      entityId={campaignId}
+                      jobId={jobId}
+                      jobCode={campaign?.job_code || campaign?.jobCode}
+                      candidates={candidates}
+                      setCandidates={setCandidates}
+                      routePrefix="migrations"
+                      entityType="migration"
+                    />
+                    <Button
+                      onClick={() => setShowScriptsDialog(true)}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      <Music className="w-4 h-4" />
+                      Campaign Scripts
+                    </Button>
+                    <Button
+                      onClick={handleActivateAndStartDialer}
+                      disabled={dialerActivating || dialerStarting}
+                      size="sm"
+                      className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {dialerActivating || dialerStarting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          {dialerActivating
+                            ? "Activating..."
+                            : "Starting Dialer..."}
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4" />
+                          Start Dialer
+                        </>
+                      )}
+                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={handlePauseDialer}
+                        disabled={
+                          dialerPausing || dialerActivating || dialerStarting
+                        }
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                      >
+                        {dialerPausing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Pausing...
+                          </>
+                        ) : (
+                          <>
+                            <Pause className="w-4 h-4" />
+                            Pause Dialer
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={handleResumeDialer}
+                        disabled={
+                          dialerResuming || dialerActivating || dialerStarting
+                        }
+                        size="sm"
+                        variant="outline"
+                        className="gap-2"
+                      >
+                        {dialerResuming ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Resuming...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4" />
+                            Resume Dialer
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={handleStopDialer}
+                        disabled={
+                          dialerStopping || dialerActivating || dialerStarting
+                        }
+                        size="sm"
+                        variant="destructive"
+                        className="gap-2"
+                      >
+                        {dialerStopping ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Stopping...
+                          </>
+                        ) : (
+                          <>
+                            <Square className="w-4 h-4" />
+                            Stop Dialer
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-gray-600 max-w-2xl">
+                  {campaign.description || "No description available"}
+                </p>
+              </div>
+
+              {/* Tags */}
+              {campaign.tags && campaign.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {campaign.tags.map((tag: string, index: number) => (
+                    <Badge
+                      key={index}
+                      variant="secondary"
+                      className="px-3 py-1"
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Metrics Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Delivered
+                    </CardTitle>
+                    <Mail className="w-4 h-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {campaign.metrics?.delivered || "0"}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {campaign.metrics?.deliveredPeriod || "No data"}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Opened
+                    </CardTitle>
+                    <Eye className="w-4 h-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {campaign.metrics?.opened || "0"}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {campaign.metrics?.openedPeriod || "No data"}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Clicked
+                    </CardTitle>
+                    <MousePointerClick className="w-4 h-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {campaign.metrics?.clicked || "0"}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {campaign.metrics?.clickedPeriod || "No data"}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium">
+                      Converted
+                    </CardTitle>
+                    <ShoppingCart className="w-4 h-4 text-gray-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {campaign.metrics?.converted || "0"}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {campaign.metrics?.convertedPeriod || "No data"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Candidates Table */}
+              <div className="mt-10 bg-white border border-gray-200 rounded-xl shadow-sm">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">
+                      Candidates
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      Imported candidate data for this campaign
+                    </p>
+                  </div>
+                  <span className="text-sm text-gray-500">
+                    {candidateSearch
+                      ? `${filteredCandidates.length} matching · ${candidates.length} total`
+                      : `${candidates.length} total`}
+                  </span>
+                </div>
+                <div className="p-6">
+                  <div className="mb-4">
+                    <SearchBox
+                      value={candidateSearch}
+                      onChange={setCandidateSearch}
+                      onClear={() => setCandidateSearch("")}
+                      placeholder="Search candidates by name, email, phone, ID, or resume file"
+                    />
+                    {candidateSearch && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        Showing {filteredCandidates.length} of{" "}
+                        {candidates.length}
+                      </p>
+                    )}
+                  </div>
+                  {candidatesLoading ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                        <p className="text-gray-600 text-sm">
+                          Loading candidates...
+                        </p>
+                      </div>
+                    </div>
+                  ) : candidatesError ? (
+                    <div className="rounded-lg bg-red-50 border border-red-200 p-4">
+                      <p className="text-sm text-red-700 font-medium">Error</p>
+                      <p className="text-sm text-red-600 mt-1">
+                        {candidatesError}
+                      </p>
+                    </div>
+                  ) : (
+                    <CandidatesTable
+                      data={filteredCandidates}
+                      onDataChange={setCandidates}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Campaign Scripts Dialog */}
+      <Dialog open={showScriptsDialog} onOpenChange={setShowScriptsDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Campaign Scripts</DialogTitle>
+            <DialogDescription>
+              Generate audio for your campaign
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-900">
+                Generate AI voice audio files for all campaign communications
+                including job pitch, skill questions, and personalized candidate
+                names.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowScriptsDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleGenerateAudio}
+                disabled={audioGenerating}
+                className="flex-1"
+              >
+                {audioGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Music className="w-4 h-4 mr-2" />
+                    Generate Audio
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Audio Preview Dialog */}
+      <Dialog
+        open={showAudioPreviewDialog}
+        onOpenChange={setShowAudioPreviewDialog}
+      >
+        <DialogContent className="max-w-4xl w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Generated Audio Scripts</DialogTitle>
+            <DialogDescription>
+              Audio files generated for your campaign. Click play to listen.
+            </DialogDescription>
+          </DialogHeader>
+
+          {audioScriptsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
+                <p className="text-gray-600 text-sm">
+                  Loading audio scripts...
+                </p>
+              </div>
+            </div>
+          ) : audioScripts.length > 0 ? (
+            <div className="overflow-x-auto w-full -mx-6 px-6">
+              <table className="w-full text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-2 sm:px-4 font-semibold text-gray-700 truncate">
+                      Audio Name
+                    </th>
+                    <th className="text-left py-3 px-2 sm:px-4 font-semibold text-gray-700 truncate">
+                      Duration
+                    </th>
+                    <th className="text-center py-3 px-2 sm:px-4 font-semibold text-gray-700 whitespace-nowrap">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {audioScripts.map((audio: any, index: number) => (
+                    <tr
+                      key={index}
+                      className="border-b border-gray-100 hover:bg-gray-50"
+                    >
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-900 truncate">
+                        {audio.name || audio.filename || `Audio ${index + 1}`}
+                      </td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-gray-600 truncate">
+                        {audio.duration_display || "—"}
+                      </td>
+                      <td className="py-2 sm:py-3 px-2 sm:px-4 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleAudioPlayback(audio.play_url)}
+                          className="gap-2 whitespace-nowrap text-xs sm:text-sm"
+                          disabled={!audio.play_url}
+                        >
+                          {currentPlayingUrl === audio.play_url &&
+                          isAudioPlaying ? (
+                            <>
+                              <Pause className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <span className="hidden sm:inline">Pause</span>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <span className="hidden sm:inline">Play</span>
+                            </>
+                          )}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-600">No audio scripts available</p>
+            </div>
+          )}
+
+          <div className="flex justify-between gap-2 pt-4">
+            <Button
+              onClick={handleApproveAudio}
+              disabled={audioApproving || audioScripts.length === 0}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              {audioApproving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Approving...
+                </>
+              ) : (
+                "Approve Audio"
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowAudioPreviewDialog(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

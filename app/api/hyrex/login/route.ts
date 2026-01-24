@@ -21,7 +21,14 @@ export async function POST(request: Request) {
       cache: "no-store",
     });
 
-    const data = await hyrexResponse.json().catch(() => ({}));
+    let data: Record<string, any> = {};
+    const contentType = hyrexResponse.headers.get("content-type");
+    if (contentType?.includes("application/json")) {
+      data = await hyrexResponse.json().catch(() => ({}));
+    } else {
+      const text = await hyrexResponse.text();
+      console.error("[Hyrex Login] Non-JSON response:", text.substring(0, 200));
+    }
 
     console.log("[Hyrex Login Response Status]", hyrexResponse.status);
     console.log("[Hyrex Login Response Data]", JSON.stringify(data));

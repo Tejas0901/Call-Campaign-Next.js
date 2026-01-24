@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
     console.log("[API Route] Authorization header received:", !!authHeader);
     if (authHeader) {
       console.log("[API Route] Auth format:", authHeader.split(' ')[0]);
+      console.log("[API Route] Auth token length:", authHeader.split(' ')[1]?.length || 0);
     }
 
     const headers: Record<string, string> = {
@@ -29,8 +30,10 @@ export async function GET(request: NextRequest) {
 
     if (authHeader) {
       headers["Authorization"] = authHeader;
+      console.log("[API Route] Forwarding auth header to Hyrex API");
     } else {
-      console.warn("[API Route] No authorization header provided!");
+      console.warn("[API Route] No authorization header provided! This will cause 401 from Hyrex API.");
+      // Still try to forward empty if somehow it exists
     }
 
     // Note: X-Tenant-ID not required for Hyrex ATS API
