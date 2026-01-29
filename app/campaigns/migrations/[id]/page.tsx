@@ -77,6 +77,16 @@ export default function MigrationDetailPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deactivateLoading, setDeactivateLoading] = useState(false);
   const [activateLoading, setActivateLoading] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<CandidateRow | null>(
+    null,
+  );
+  const [showViewContactDialog, setShowViewContactDialog] = useState(false);
+  const [showEditContactDialog, setShowEditContactDialog] = useState(false);
+  const [showDeleteContactDialog, setShowDeleteContactDialog] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<string | null>(null);
+  const [deletingContact, setDeletingContact] = useState(false);
+  const [editingContact, setEditingContact] = useState(false);
+  const [editFormData, setEditFormData] = useState<any>({});
   const { toast } = useToast();
 
   // Get auth tokens on mount
@@ -1334,6 +1344,156 @@ export default function MigrationDetailPage() {
     }
   };
 
+  const handleViewContact = (contact: CandidateRow) => {
+    setSelectedContact(contact);
+    setShowViewContactDialog(true);
+  };
+
+  const handleEditContact = (contact: CandidateRow) => {
+    setSelectedContact(contact);
+    setEditFormData({
+      candidate_name: contact.name,
+      phone_number: contact.phone,
+      email: contact.email,
+    });
+    setShowEditContactDialog(true);
+  };
+
+  const handleDeleteContact = (contactId: string) => {
+    setContactToDelete(contactId);
+    setShowDeleteContactDialog(true);
+  };
+
+  const confirmDeleteContact = async () => {
+    if (!contactToDelete || !authToken) return;
+
+    setDeletingContact(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/contacts/${campaignId}/${contactToDelete}`,
+        {
+          method: "DELETE",
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to delete contact",
+        );
+      }
+
+      toast({
+        title: "Contact Deleted",
+        description: "Contact has been successfully deleted.",
+        variant: "default",
+      });
+
+      // Remove from local state
+      setCandidates((prev) => prev.filter((c) => c.id !== contactToDelete));
+      setShowDeleteContactDialog(false);
+      setContactToDelete(null);
+    } catch (error: any) {
+      console.error("[Delete Contact Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to delete contact",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingContact(false);
+    }
+  };
+
+  const confirmEditContact = async () => {
+    if (!selectedContact || !authToken) return;
+
+    setEditingContact(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/contacts/${campaignId}/${selectedContact.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify(editFormData),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to update contact",
+        );
+      }
+
+      toast({
+        title: "Contact Updated",
+        description: "Contact has been successfully updated.",
+        variant: "default",
+      });
+
+      // Update local state
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === selectedContact.id
+            ? {
+                ...c,
+                name: editFormData.candidate_name,
+                phone: editFormData.phone_number,
+                email: editFormData.email,
+              }
+            : c,
+        ),
+      );
+      setShowEditContactDialog(false);
+      setSelectedContact(null);
+    } catch (error: any) {
+      console.error("[Edit Contact Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update contact",
+        variant: "destructive",
+      });
+    } finally {
+      setEditingContact(false);
+    }
+  };
+
   return (
     <>
       <div className="flex min-h-screen bg-gray-50">
@@ -1675,6 +1835,10 @@ export default function MigrationDetailPage() {
                     <CandidatesTable
                       data={filteredCandidates}
                       onDataChange={setCandidates}
+                      campaignId={campaignId}
+                      onView={handleViewContact}
+                      onEdit={handleEditContact}
+                      onDelete={handleDeleteContact}
                     />
                   )}
                 </div>
@@ -1875,6 +2039,165 @@ export default function MigrationDetailPage() {
         cancelText="Cancel"
         onConfirm={handleActivateCampaign}
         loading={activateLoading}
+      />
+
+      {/* View Contact Dialog */}
+      <Dialog
+        open={showViewContactDialog}
+        onOpenChange={setShowViewContactDialog}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Contact Details</DialogTitle>
+            <DialogDescription>
+              View complete contact information
+            </DialogDescription>
+          </DialogHeader>
+          {selectedContact && (
+            <div className="space-y-4">
+              <div className="border-b pb-3">
+                <label className="text-xs font-semibold text-gray-500 uppercase">
+                  Name
+                </label>
+                <p className="text-sm text-gray-900 font-medium">
+                  {selectedContact.name}
+                </p>
+              </div>
+              <div className="border-b pb-3">
+                <label className="text-xs font-semibold text-gray-500 uppercase">
+                  Phone Number
+                </label>
+                <p className="text-sm text-gray-900">{selectedContact.phone}</p>
+              </div>
+              <div className="border-b pb-3">
+                <label className="text-xs font-semibold text-gray-500 uppercase">
+                  Email
+                </label>
+                <p className="text-sm text-gray-900">{selectedContact.email}</p>
+              </div>
+              {selectedContact.resumeFileName && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase">
+                    Resume
+                  </label>
+                  <div className="mt-1">
+                    <a
+                      href={
+                        typeof selectedContact.resume === "string"
+                          ? selectedContact.resume
+                          : undefined
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-700 underline"
+                    >
+                      {selectedContact.resumeFileName}
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowViewContactDialog(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Contact Dialog */}
+      <Dialog
+        open={showEditContactDialog}
+        onOpenChange={setShowEditContactDialog}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Contact</DialogTitle>
+            <DialogDescription>Update contact information</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Name</label>
+              <input
+                type="text"
+                value={editFormData.candidate_name || ""}
+                onChange={(e) =>
+                  setEditFormData({
+                    ...editFormData,
+                    candidate_name: e.target.value,
+                  })
+                }
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">
+                Phone Number
+              </label>
+              <input
+                type="text"
+                value={editFormData.phone_number || ""}
+                onChange={(e) =>
+                  setEditFormData({
+                    ...editFormData,
+                    phone_number: e.target.value,
+                  })
+                }
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Email</label>
+              <input
+                type="email"
+                value={editFormData.email || ""}
+                onChange={(e) =>
+                  setEditFormData({
+                    ...editFormData,
+                    email: e.target.value,
+                  })
+                }
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowEditContactDialog(false)}
+              disabled={editingContact}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmEditContact} disabled={editingContact}>
+              {editingContact ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Contact Confirmation */}
+      <ConfirmDialog
+        open={showDeleteContactDialog}
+        onOpenChange={setShowDeleteContactDialog}
+        title="Delete Contact"
+        description="Are you sure you want to delete this contact? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={confirmDeleteContact}
+        loading={deletingContact}
       />
     </>
   );

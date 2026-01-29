@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { X } from "lucide-react";
+import { X, Eye, Edit, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export interface CandidateRow {
   id: string;
@@ -20,12 +21,20 @@ interface CandidatesTableProps {
   data: CandidateRow[];
   onDataChange?: (data: CandidateRow[]) => void;
   onSelectionChange?: (selectedIds: string[]) => void;
+  onView?: (candidate: CandidateRow) => void;
+  onEdit?: (candidate: CandidateRow) => void;
+  onDelete?: (candidateId: string) => void;
+  campaignId?: string;
 }
 
 export default function CandidatesTable({
   data,
   onDataChange,
   onSelectionChange,
+  onView,
+  onEdit,
+  onDelete,
+  campaignId,
 }: CandidatesTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -81,9 +90,6 @@ export default function CandidatesTable({
                 Name
               </th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
-                Candidate ID
-              </th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
                 Phone No.
               </th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
@@ -91,6 +97,9 @@ export default function CandidatesTable({
               </th>
               <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900">
                 Resume
+              </th>
+              <th className="px-4 py-3 text-center text-sm font-semibold text-gray-900">
+                Actions
               </th>
             </tr>
           </thead>
@@ -114,12 +123,6 @@ export default function CandidatesTable({
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 font-medium">
                     {row.name}
-                  </td>
-                  <td
-                    className="px-4 py-3 text-sm text-gray-600 font-mono truncate max-w-xs"
-                    title={row.candidateId || row.id}
-                  >
-                    {row.candidateId || row.id}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-700">
                     {row.phone}
@@ -156,6 +159,43 @@ export default function CandidatesTable({
                         </div>
                       ) : (
                         <span className="text-xs text-gray-500">—</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-1">
+                      {onView && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onView(row)}
+                          className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          title="View details"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {onEdit && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onEdit(row)}
+                          className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          title="Edit contact"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDelete(row.id)}
+                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Delete contact"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       )}
                     </div>
                   </td>
