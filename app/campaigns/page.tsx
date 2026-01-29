@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import MainLayout from "@/components/layouts/MainLayout";
 import CampaignCard from "@/components/CampaignCard";
@@ -8,8 +8,14 @@ import DraftCard from "@/components/DraftCard";
 import MigrationCard from "@/components/MigrationCard";
 import CreateCampaignModal from "@/components/CreateCampaignModal";
 import { campaignData } from "@/data/campaignData";
-import { Plus, ChevronDown } from "lucide-react";
+import { Plus, ChevronDown, Search } from "lucide-react";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { useCampaignSearch } from "@/hooks/useCampaignSearch";
+import { CampaignSearchFilters } from "@/types/campaign";
+import { CampaignFilters } from "@/components/campaigns/CampaignFilters";
+import { CampaignSearchCard } from "@/components/campaigns/CampaignSearchCard";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,7 +26,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
 import { HyrexLoginDialog } from "@/components/hyrex/HyrexLoginDialog";
 
 type Draft = {
@@ -52,6 +57,22 @@ export default function Campaigns() {
     fetchCampaigns,
   } = useCampaigns(authToken);
   const [campaigns, setCampaigns] = useState<any[]>([]);
+
+  // Search functionality
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFilters, setSearchFilters] = useState<CampaignSearchFilters>({
+    page: 1,
+    page_size: 50,
+    is_deleted: false,
+  });
+  const [useSearch, setUseSearch] = useState(false);
+  const {
+    campaigns: searchedCampaigns,
+    loading: searchLoading,
+    error: searchError,
+    pagination,
+    searchCampaigns,
+  } = useCampaignSearch(authToken);
 
   useEffect(() => {
     // Restore Hyrex token and drafts, and auth token for migrations
@@ -86,6 +107,66 @@ export default function Campaigns() {
   useEffect(() => {
     setCampaigns(fetchedCampaigns);
   }, [fetchedCampaigns]);
+
+  // Handle search with debouncing
+  useEffect(() => {
+    if (!authToken || !useSearch) return;
+
+    const timeoutId = setTimeout(() => {
+      const filters = { ...searchFilters };
+      if (searchQuery) {
+        filters.q = searchQuery;
+      }
+      searchCampaigns(filters);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchFilters, authToken, useSearch]);
+
+  // Determine which campaigns to display
+  const displayCampaigns = useMemo(() => {
+    if (view === "migrations") {
+      return useSearch ? searchedCampaigns : campaigns;
+    }
+    return [];
+  }, [view, useSearch, searchedCampaigns, campaigns]);
+
+  const isLoading =
+    view === "migrations"
+      ? useSearch
+        ? searchLoading
+        : campaignsLoading
+      : false;
+  const displayError =
+    view === "migrations" ? (useSearch ? searchError : campaignsError) : null;
+
+  const handleApplyFilters = () => {
+    if (authToken) {
+      setUseSearch(true);
+      const filters = { ...searchFilters };
+      if (searchQuery) {
+        filters.q = searchQuery;
+      }
+      searchCampaigns(filters);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setSearchFilters({
+      page: 1,
+      page_size: 50,
+      is_deleted: false,
+    });
+    setSearchQuery("");
+    setUseSearch(false);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setSearchFilters({ ...searchFilters, page: newPage });
+    if (useSearch && authToken) {
+      searchCampaigns({ ...searchFilters, page: newPage });
+    }
+  };
 
   const deleteDraft = (id: string) => {
     try {
@@ -210,24 +291,52 @@ export default function Campaigns() {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-6">
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-          <span>Triggered By</span>
-          <ChevronDown className="w-4 h-4" />
-        </button>
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-          <span>Status</span>
-          <ChevronDown className="w-4 h-4" />
-        </button>
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-          <span>Tags</span>
-          <ChevronDown className="w-4 h-4" />
-        </button>
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-          <span>Sort by: Sent Email</span>
-          <ChevronDown className="w-4 h-4" />
-        </button>
-      </div>
+      {view === "migrations" && (
+        <div className="mb-6 space-y-4">
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search campaigns by name, job role, company, location..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setUseSearch(true);
+                }}
+                className="pl-10"
+              />
+            </div>
+            <CampaignFilters
+              filters={searchFilters}
+              onFiltersChange={setSearchFilters}
+              onApply={handleApplyFilters}
+              onClear={handleClearFilters}
+            />
+          </div>
+        </div>
+      )}
+
+      {view !== "migrations" && (
+        <div className="flex flex-wrap gap-3 mb-6">
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <span>Triggered By</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <span>Status</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <span>Tags</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
+            <span>Sort by: Sent Email</span>
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {view === "active" && (
         <div className="space-y-4">
@@ -263,7 +372,7 @@ export default function Campaigns() {
 
       {view === "migrations" && (
         <div className="space-y-4">
-          {campaignsLoading && (
+          {isLoading && (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
@@ -272,28 +381,65 @@ export default function Campaigns() {
             </div>
           )}
 
-          {campaignsError && !campaignsLoading && (
+          {displayError && !isLoading && (
             <div className="rounded-lg bg-red-50 border border-red-200 p-4">
               <p className="text-sm text-red-700 font-medium">Error</p>
-              <p className="text-sm text-red-600 mt-1">{campaignsError}</p>
+              <p className="text-sm text-red-600 mt-1">{displayError}</p>
             </div>
           )}
 
-          {!campaignsLoading && campaigns.length === 0 && (
+          {!isLoading && displayCampaigns.length === 0 && (
             <div className="text-gray-600">
-              No campaigns found. Create one to get started!
+              {useSearch
+                ? "No campaigns found matching your search criteria."
+                : "No campaigns found. Create one to get started!"}
             </div>
           )}
 
-          {!campaignsLoading &&
-            campaigns.length > 0 &&
-            campaigns.map((campaign) => (
-              <MigrationCard
-                key={campaign.id}
-                campaign={campaign}
-                onView={(id) => router.push(`/campaigns/migrations/${id}`)}
-              />
-            ))}
+          {!isLoading &&
+            displayCampaigns.length > 0 &&
+            displayCampaigns.map((campaign) =>
+              useSearch ? (
+                <CampaignSearchCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  onView={(id) => router.push(`/campaigns/migrations/${id}`)}
+                />
+              ) : (
+                <MigrationCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  onView={(id) => router.push(`/campaigns/migrations/${id}`)}
+                />
+              )
+            )}
+
+          {pagination && pagination.total_pages > 1 && (
+            <div className="flex items-center justify-between pt-4">
+              <p className="text-sm text-gray-600">
+                Showing page {pagination.page} of {pagination.total_pages}{" "}
+                (Total: {pagination.total} campaigns)
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.has_prev}
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.has_next}
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

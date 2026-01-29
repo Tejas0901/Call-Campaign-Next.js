@@ -18,14 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 
-interface Campaign {
-  id: string;
-  job_role: string;
-  status: string; // allow unknown statuses safely
-  created_at: string;
-  is_deleted?: boolean;
-  deleted_at?: string;
-}
+import { Campaign } from "@/types/campaign";
 
 interface MigrationCardProps {
   campaign: Campaign;
@@ -103,7 +96,7 @@ export default function MigrationCard({
   const config =
     statusConfig[campaign.status as keyof typeof statusConfig] ||
     fallbackConfig;
-  const StatusIcon = config.icon;
+  const StatusIcon = config?.icon || Clock;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
