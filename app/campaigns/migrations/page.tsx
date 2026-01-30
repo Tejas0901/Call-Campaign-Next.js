@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import MainLayout from "@/components/layouts/MainLayout";
 import { useRouter } from "next/navigation";
 import MigrationCard from "@/components/MigrationCard";
-import { ChevronDown, ArrowLeft } from "lucide-react";
+import CreateCampaignModal from "@/components/CreateCampaignModal";
+import { HyrexLoginDialog } from "@/components/hyrex/HyrexLoginDialog";
+import { ChevronDown, ArrowLeft, Search, Plus } from "lucide-react";
 import { useCampaigns } from "@/hooks/useCampaigns";
+import { useCampaignSearch } from "@/hooks/useCampaignSearch";
+import { Campaign, CampaignSearchFilters } from "@/types/campaign";
+import { CampaignFilters } from "@/components/campaigns/CampaignFilters";
+import { CampaignSearchCard } from "@/components/campaigns/CampaignSearchCard";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,26 +25,48 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-interface Campaign {
+// Legacy campaign type from useCampaigns
+interface LegacyCampaign {
   id: string;
   job_role: string;
-  status: "draft" | "active";
+  status: "draft" | "active" | "inactive";
   created_at: string;
+  is_deleted?: boolean;
+  deleted_at?: string;
 }
 
 export default function MigrationsPage() {
   const router = useRouter();
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const [hyrexToken, setHyrexToken] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
   const [deletingCampaigns, setDeletingCampaigns] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [filteredCampaigns, setFilteredCampaigns] = useState<Campaign[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft">(
-    "all",
+  const [restoringCampaigns, setRestoringCampaigns] = useState<Set<string>>(
+    new Set()
   );
+  const [permanentlyDeletingCampaigns, setPermanentlyDeletingCampaigns] =
+    useState<Set<string>>(new Set());
+  const [showPermanentDeleteDialog, setShowPermanentDeleteDialog] =
+    useState(false);
+  const [campaignToPermDeleteId, setCampaignToPermDeleteId] = useState<
+    string | null
+  >(null);
+  const [campaigns, setCampaigns] = useState<LegacyCampaign[]>([]);
+  const [deletedCampaigns, setDeletedCampaigns] = useState<LegacyCampaign[]>(
+    []
+  );
+  const [filteredCampaigns, setFilteredCampaigns] = useState<
+    (LegacyCampaign | Campaign)[]
+  >([]);
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "active" | "draft" | "deleted"
+  >("all");
+  const [showDeletedSection, setShowDeletedSection] = useState(false);
 
   const {
     campaigns: fetchedCampaigns,
@@ -44,6 +74,22 @@ export default function MigrationsPage() {
     error,
     fetchCampaigns,
   } = useCampaigns(authToken);
+
+  // Search functionality
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFilters, setSearchFilters] = useState<CampaignSearchFilters>({
+    page: 1,
+    page_size: 50,
+    is_deleted: false,
+  });
+  const [useSearch, setUseSearch] = useState(false);
+  const {
+    campaigns: searchedCampaigns,
+    loading: searchLoading,
+    error: searchError,
+    pagination,
+    searchCampaigns,
+  } = useCampaignSearch(authToken);
 
   // Get auth token on mount
   useEffect(() => {
@@ -65,29 +111,199 @@ export default function MigrationsPage() {
   useEffect(() => {
     if (authToken && !loading) {
       fetchCampaigns();
+      fetchDeletedCampaigns();
     }
   }, [authToken]);
+
+  // Fetch deleted campaigns
+  const fetchDeletedCampaigns = async () => {
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID || !authToken) {
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/campaigns?include_deleted=true`,
+        {
+          method: "GET",
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch deleted campaigns");
+      }
+
+      const result = await response.json();
+      if (result.success && result.data?.campaigns) {
+        const deleted = result.data.campaigns.filter(
+          (c: LegacyCampaign) => c.is_deleted === true
+        );
+        setDeletedCampaigns(deleted);
+      }
+    } catch (err) {
+      console.error("[MigrationsPage] Error fetching deleted campaigns:", err);
+    }
+  };
 
   // Update campaigns when fetched
   useEffect(() => {
     setCampaigns(fetchedCampaigns);
   }, [fetchedCampaigns]);
 
+  // Convert legacy campaign to full campaign format for display
+  const convertLegacyCampaign = (legacy: LegacyCampaign): Campaign => {
+    return {
+      id: legacy.id,
+      tenant_id: "", // Not available in legacy format
+      name: legacy.job_role, // Use job_role as name
+      description: null,
+      job_id: 0, // Not available in legacy format
+      job_code: "",
+      job_role: legacy.job_role,
+      job_type: "fulltime", // Default value
+      hiring_company_name: "", // Not available in legacy format
+      client_name: null,
+      job_location: "", // Not available in legacy format
+      job_locations: [],
+      work_mode: "remote", // Default value
+      shift_type: "day", // Default value
+      interview_mode: "video", // Default value
+      is_drive: false, // Default value
+      drive_date: null,
+      drive_location: null,
+      drive_time: null,
+      experience_min: 0, // Default value
+      experience_max: 5, // Default value
+      min_ctc: 0, // Default value
+      max_ctc: 0, // Default value
+      ctc_negotiable: false, // Default value
+      status: legacy.status as "draft" | "active" | "completed",
+      total_contacts: 0, // Default value
+      completed_calls: 0, // Default value
+      failed_calls: 0, // Default value
+      pending_calls: 0, // Default value
+      audio_generated: false, // Default value
+      audio_approved: false, // Default value
+      voice_gender: "female", // Default value
+      is_deleted: !!legacy.is_deleted,
+      deleted_at: legacy.deleted_at || null,
+      created_at: legacy.created_at,
+      updated_at: legacy.created_at, // Default to created_at
+      started_at: null,
+      completed_at: null,
+    };
+  };
+
   // Filter campaigns based on status
   useEffect(() => {
-    let filtered = campaigns;
+    let filtered: (LegacyCampaign | Campaign)[] = [];
     if (statusFilter === "active") {
       filtered = campaigns.filter((c) => c.status === "active");
     } else if (statusFilter === "draft") {
       filtered = campaigns.filter((c) => c.status === "draft");
+    } else if (statusFilter === "deleted") {
+      filtered = deletedCampaigns;
     }
-    // Sort by created_at descending
-    filtered.sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
+
     setFilteredCampaigns(filtered);
-  }, [campaigns, statusFilter]);
+  }, [campaigns, deletedCampaigns, statusFilter]);
+
+  // Handle search with debouncing
+  useEffect(() => {
+    if (!authToken || !useSearch) return;
+
+    const timeoutId = setTimeout(() => {
+      const filters = { ...searchFilters };
+      if (searchQuery) {
+        filters.q = searchQuery;
+      }
+      searchCampaigns(filters);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, searchFilters, authToken, useSearch]);
+
+  // Determine which campaigns to display
+  const displayCampaigns = useMemo(() => {
+    if (useSearch) {
+      return searchedCampaigns;
+    }
+    // When not using search, convert legacy campaigns to full format
+    return filteredCampaigns.map((c) =>
+      (c as LegacyCampaign).job_role
+        ? convertLegacyCampaign(c as LegacyCampaign)
+        : (c as Campaign)
+    );
+  }, [useSearch, searchedCampaigns, filteredCampaigns]);
+
+  const isLoading = useSearch ? searchLoading : loading;
+  const displayError = useSearch ? searchError : error;
+
+  const handleApplyFilters = () => {
+    if (authToken) {
+      setUseSearch(true);
+      const filters = { ...searchFilters };
+      if (searchQuery) {
+        filters.q = searchQuery;
+      }
+      searchCampaigns(filters);
+    }
+  };
+
+  const handleClearFilters = () => {
+    setSearchFilters({
+      page: 1,
+      page_size: 50,
+      is_deleted: false,
+    });
+    setSearchQuery("");
+    setUseSearch(false);
+  };
+
+  const handleCreateCampaign = () => {
+    // Check if user has Hyrex token
+    const storedHyrexToken =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("hyrex-auth-token")
+        : null;
+
+    if (storedHyrexToken) {
+      setHyrexToken(storedHyrexToken);
+      setIsModalOpen(true);
+    } else {
+      setShowLoginDialog(true);
+    }
+  };
+
+  const handleHyrexLoginSuccess = (token: string) => {
+    setHyrexToken(token);
+    setShowLoginDialog(false);
+    setIsModalOpen(true);
+  };
+
+  const handleCampaignCreated = () => {
+    setIsModalOpen(false);
+    // Refresh campaigns after creation
+    if (authToken) {
+      fetchCampaigns();
+    }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setSearchFilters({ ...searchFilters, page: newPage });
+    if (useSearch && authToken) {
+      searchCampaigns({ ...searchFilters, page: newPage });
+    }
+  };
 
   const deleteCampaign = async (id: string) => {
     setDeletingCampaigns((prev) => new Set(prev).add(id));
@@ -110,12 +326,13 @@ export default function MigrationsPage() {
 
       if (!response.ok) {
         throw new Error(
-          `Failed to delete campaign: ${response.status} ${response.statusText}`,
+          `Failed to delete campaign: ${response.status} ${response.statusText}`
         );
       }
 
-      // Remove from local state
+      // Remove from local state and refresh deleted campaigns
       setCampaigns((prev) => prev.filter((c) => c.id !== id));
+      await fetchDeletedCampaigns();
       setShowDeleteDialog(false);
       setCampaignToDelete(null);
     } catch (err: any) {
@@ -130,13 +347,140 @@ export default function MigrationsPage() {
     }
   };
 
+  const restoreCampaign = async (id: string) => {
+    setRestoringCampaigns((prev) => new Set(prev).add(id));
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        throw new Error("Missing API configuration");
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/campaigns/${id}/restore`,
+        {
+          method: "POST",
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          `Failed to restore campaign: ${response.status} ${response.statusText}`
+        );
+      }
+
+      // Refresh both lists
+      await fetchCampaigns();
+      await fetchDeletedCampaigns();
+    } catch (err: any) {
+      console.error("[MigrationsPage] Error restoring campaign:", err);
+    } finally {
+      setRestoringCampaigns((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   const confirmDeleteCampaign = (id: string) => {
     setCampaignToDelete(id);
     setShowDeleteDialog(true);
   };
 
+  const confirmPermanentDeleteCampaign = (id: string) => {
+    setCampaignToPermDeleteId(id);
+    setShowPermanentDeleteDialog(true);
+  };
+
+  const permanentlyDeleteCampaign = async (id: string) => {
+    setPermanentlyDeletingCampaigns((prev) => new Set(prev).add(id));
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        throw new Error("Missing API configuration");
+      }
+
+      if (!authToken) {
+        throw new Error("Auth token is missing");
+      }
+
+      const permanentDeleteUrl = `${API_BASE_URL.replace(
+        /\/$/,
+        ""
+      )}/api/v1/campaigns/${id}/permanent?confirm=true`;
+      console.log("[Permanent Delete] Calling URL:", permanentDeleteUrl);
+
+      const response = await fetch(permanentDeleteUrl, {
+        method: "DELETE",
+        headers: {
+          "tenant-id": TENANT_ID,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+          "ngrok-skip-browser-warning": "69420",
+        },
+      });
+
+      console.log("[Permanent Delete Response]", {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: response.headers.get("content-type"),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Failed to permanently delete campaign: ${response.status} ${response.statusText}`;
+        try {
+          const errorText = await response.text();
+          console.error("[Permanent Delete Raw Response]", errorText);
+
+          if (errorText) {
+            try {
+              const errorData = JSON.parse(errorText);
+              console.error("[Permanent Delete Error Data]", errorData);
+              errorMessage =
+                errorData?.message ||
+                errorData?.detail ||
+                errorData?.error ||
+                errorMessage;
+            } catch (parseE) {
+              errorMessage = errorText || errorMessage;
+            }
+          }
+        } catch (e) {
+          console.error("[Permanent Delete Error]", e);
+        }
+        throw new Error(errorMessage);
+      }
+
+      // Refresh the deleted campaigns list
+      await fetchDeletedCampaigns();
+      setShowPermanentDeleteDialog(false);
+    } catch (err: any) {
+      console.error(
+        "[MigrationsPage] Error permanently deleting campaign:",
+        err
+      );
+    } finally {
+      setPermanentlyDeletingCampaigns((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
   const activeCount = campaigns.filter((c) => c.status === "active").length;
   const draftCount = campaigns.filter((c) => c.status === "draft").length;
+  const deletedCount = deletedCampaigns.length;
 
   return (
     <MainLayout>
@@ -144,13 +488,46 @@ export default function MigrationsPage() {
         <h1 className="text-2xl font-bold text-gray-900">
           Campaign Migrations
         </h1>
-        <button
-          onClick={() => router.push("/campaigns")}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Campaigns
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleCreateCampaign}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Create Campaign
+          </button>
+          <button
+            onClick={() => router.push("/campaigns")}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Back to Campaigns
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-6 space-y-4">
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              type="text"
+              placeholder="Search campaigns by name, job role, company, location..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setUseSearch(true);
+              }}
+              className="pl-10"
+            />
+          </div>
+          <CampaignFilters
+            filters={searchFilters}
+            onFiltersChange={setSearchFilters}
+            onApply={handleApplyFilters}
+            onClear={handleClearFilters}
+          />
+        </div>
       </div>
 
       <div className="flex gap-2 mb-6 pb-4 border-b border-gray-200">
@@ -193,23 +570,29 @@ export default function MigrationsPage() {
             {draftCount.toString().padStart(2, "0")}
           </span>
         </button>
-      </div>
-
-      <div className="flex flex-wrap gap-3 mb-6">
-        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-          <span>Sort by: Date Created</span>
-          <ChevronDown className="w-4 h-4" />
+        <button
+          onClick={() => setStatusFilter("deleted")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            statusFilter === "deleted"
+              ? "text-red-600 border-red-600"
+              : "text-gray-600 border-transparent hover:text-gray-900"
+          }`}
+        >
+          Deleted{" "}
+          <span className="ml-1 text-gray-500">
+            {deletedCount.toString().padStart(2, "0")}
+          </span>
         </button>
       </div>
 
-      {error && (
+      {displayError && (
         <div className="rounded-lg bg-red-50 border border-red-200 p-4 mb-6">
           <p className="text-sm text-red-700 font-medium">Error</p>
-          <p className="text-sm text-red-600 mt-1">{error}</p>
+          <p className="text-sm text-red-600 mt-1">{displayError}</p>
         </div>
       )}
 
-      {loading && (
+      {isLoading && (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
@@ -218,26 +601,94 @@ export default function MigrationsPage() {
         </div>
       )}
 
-      {!loading && filteredCampaigns.length === 0 ? (
+      {!isLoading && displayCampaigns.length === 0 ? (
         <div className="text-gray-600">
-          {campaigns.length === 0
+          {useSearch
+            ? "No campaigns found matching your search criteria."
+            : campaigns.length === 0 && statusFilter !== "deleted"
             ? "No campaigns found. Create one to get started!"
+            : statusFilter === "deleted" && deletedCount === 0
+            ? "No deleted campaigns."
             : `No ${
                 statusFilter === "all" ? "" : statusFilter
               } campaigns found.`}
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredCampaigns.map((campaign) => (
-            <MigrationCard
-              key={campaign.id}
-              campaign={campaign}
-              onView={(id) => router.push(`/campaigns/migrations/${id}`)}
-              onDelete={confirmDeleteCampaign}
-            />
-          ))}
+          {displayCampaigns.map((campaign) => {
+            return useSearch ? (
+              <CampaignSearchCard
+                key={campaign.id}
+                campaign={campaign}
+                onView={(id) => router.push(`/campaigns/migrations/${id}`)}
+              />
+            ) : (
+              <MigrationCard
+                key={campaign.id}
+                campaign={campaign}
+                onView={(id) => router.push(`/campaigns/migrations/${id}`)}
+                onDelete={confirmDeleteCampaign}
+                isDeleted={statusFilter === "deleted"}
+                onRestore={
+                  statusFilter === "deleted" ? restoreCampaign : undefined
+                }
+                isRestoring={restoringCampaigns.has(campaign.id)}
+                onPermanentDelete={
+                  statusFilter === "deleted"
+                    ? confirmPermanentDeleteCampaign
+                    : undefined
+                }
+                isPermanentDeleting={permanentlyDeletingCampaigns.has(
+                  campaign.id
+                )}
+              />
+            );
+          })}
+
+          {useSearch && pagination && pagination.total_pages > 1 && (
+            <div className="flex items-center justify-between pt-4">
+              <p className="text-sm text-gray-600">
+                Showing page {pagination.page} of {pagination.total_pages}{" "}
+                (Total: {pagination.total} campaigns)
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.has_prev}
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!pagination.has_next}
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* Create Campaign Modal */}
+      <CreateCampaignModal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        authToken={hyrexToken || undefined}
+        onCreated={handleCampaignCreated}
+      />
+
+      {/* Hyrex Login Dialog */}
+      <HyrexLoginDialog
+        open={showLoginDialog}
+        onOpenChange={setShowLoginDialog}
+        onSuccess={handleHyrexLoginSuccess}
+        description="Enter your Hyrex credentials to fetch job codes and create campaigns."
+      />
 
       {/* Delete Campaign Confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
@@ -265,6 +716,42 @@ export default function MigrationsPage() {
               {campaignToDelete && deletingCampaigns.has(campaignToDelete)
                 ? "Deleting..."
                 : "Yes, Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Permanent Delete Campaign Confirmation */}
+      <AlertDialog
+        open={showPermanentDeleteDialog}
+        onOpenChange={setShowPermanentDeleteDialog}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently Delete Campaign?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove this campaign and all associated data
+              from the system. This action cannot be undone and is irreversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() =>
+                campaignToPermDeleteId &&
+                permanentlyDeleteCampaign(campaignToPermDeleteId)
+              }
+              disabled={
+                campaignToPermDeleteId
+                  ? permanentlyDeletingCampaigns.has(campaignToPermDeleteId)
+                  : false
+              }
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {campaignToPermDeleteId &&
+              permanentlyDeletingCampaigns.has(campaignToPermDeleteId)
+                ? "Permanently Deleting..."
+                : "Yes, Permanently Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

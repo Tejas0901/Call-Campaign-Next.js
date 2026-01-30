@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   Mail,
   MessageSquare,
@@ -14,6 +14,9 @@ import {
   Play,
   Pause,
   Square,
+  Trash2,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { campaignData } from "@/data/campaignData";
@@ -28,6 +31,28 @@ import CandidatesTable, {
 import AddCandidatesWorkflow from "@/components/campaigns/AddCandidatesWorkflow";
 import { filterJobsByCode } from "@/lib/api-integrations";
 import { SearchBox } from "@/components/ui/search-box";
+import { useContactSearch } from "@/hooks/useContactSearch";
+import { ContactFilters } from "@/components/campaigns/ContactFilters";
+import {
+  CALL_STATUS_OPTIONS,
+  CALL_OUTCOME_OPTIONS,
+  SORT_OPTIONS,
+} from "@/types/contact";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Pagination as PaginationUI,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +60,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function MigrationDetailPage() {
   const params = useParams();
@@ -45,12 +71,53 @@ export default function MigrationDetailPage() {
   const [loading, setLoading] = useState(true);
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
   const [hyrexAuthToken, setHyrexAuthToken] = useState<string | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [jobId, setJobId] = useState<number | null>(null);
   const [candidates, setCandidates] = useState<CandidateRow[]>([]);
-  const [candidatesLoading, setCandidatesLoading] = useState(false);
-  const [candidatesError, setCandidatesError] = useState<string | null>(null);
-  const [candidateSearch, setCandidateSearch] = useState("");
+
+  // Use the new contact search hook
+  const {
+    contacts,
+    pagination,
+    loading: candidatesLoading,
+    error: candidatesError,
+    filters,
+    updateFilters,
+    goToPage,
+    clearFilters,
+    refetch: refetchContacts,
+  } = useContactSearch(campaignId, authToken);
+
+  // Sync contacts to candidates state
+  useEffect(() => {
+    const transformedCandidates: CandidateRow[] = contacts.map((contact) => ({
+      id: contact.id,
+      name: contact.candidate_name || "Unknown",
+      phone: contact.phone_number || "—",
+      email: contact.email || "—",
+      resume: contact.resume_url || null,
+      resumeFileName: contact.resume_url
+        ? contact.resume_url.split("/").pop() || undefined
+        : undefined,
+      candidateId: contact.ats_candidate_id || contact.id,
+      role: contact.experience_years
+        ? `${contact.experience_years} yrs exp`
+        : undefined,
+      company: contact.source || undefined,
+    }));
+    setCandidates(transformedCandidates);
+  }, [contacts]);
+
+  // State for debounced search
+  const [searchValue, setSearchValue] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateFilters({ q: searchValue });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchValue, updateFilters]);
+
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showScriptsDialog, setShowScriptsDialog] = useState(false);
   const [audioGenerating, setAudioGenerating] = useState(false);
   const [showAudioPreviewDialog, setShowAudioPreviewDialog] = useState(false);
@@ -58,7 +125,7 @@ export default function MigrationDetailPage() {
   const [audioScriptsLoading, setAudioScriptsLoading] = useState(false);
   const [audioApproving, setAudioApproving] = useState(false);
   const [currentPlayingUrl, setCurrentPlayingUrl] = useState<string | null>(
-    null,
+    null
   );
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -67,6 +134,22 @@ export default function MigrationDetailPage() {
   const [dialerPausing, setDialerPausing] = useState(false);
   const [dialerResuming, setDialerResuming] = useState(false);
   const [dialerStopping, setDialerStopping] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
+  const [showActivateDialog, setShowActivateDialog] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deactivateLoading, setDeactivateLoading] = useState(false);
+  const [activateLoading, setActivateLoading] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<CandidateRow | null>(
+    null
+  );
+  const [showViewContactDialog, setShowViewContactDialog] = useState(false);
+  const [showEditContactDialog, setShowEditContactDialog] = useState(false);
+  const [showDeleteContactDialog, setShowDeleteContactDialog] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<string | null>(null);
+  const [deletingContact, setDeletingContact] = useState(false);
+  const [editingContact, setEditingContact] = useState(false);
+  const [editFormData, setEditFormData] = useState<any>({});
   const { toast } = useToast();
 
   // Get auth tokens on mount
@@ -99,12 +182,12 @@ export default function MigrationDetailPage() {
       const numericId = parseInt(campaignId);
       if (!isNaN(numericId)) {
         const foundCampaign = campaignData.campaigns.find(
-          (camp: any) => camp.id === numericId,
+          (camp: any) => camp.id === numericId
         );
         if (foundCampaign) {
           console.log(
             "[MigrationDetailPage] Found in static data:",
-            foundCampaign,
+            foundCampaign
           );
           setCampaign(foundCampaign);
           setLoading(false);
@@ -148,7 +231,7 @@ export default function MigrationDetailPage() {
         console.log(
           "[MigrationDetailPage] Response status:",
           response.status,
-          response.statusText,
+          response.statusText
         );
 
         // Check content-type but try parsing anyway
@@ -162,12 +245,12 @@ export default function MigrationDetailPage() {
           responseData = responseText ? JSON.parse(responseText) : {};
           console.log(
             "[MigrationDetailPage] Parsed API response:",
-            responseData,
+            responseData
           );
         } catch (parseError) {
           console.error(
             "[MigrationDetailPage] Failed to parse JSON:",
-            parseError,
+            parseError
           );
           setCampaign(null);
           setLoading(false);
@@ -179,17 +262,21 @@ export default function MigrationDetailPage() {
           const fetchedCampaign = responseData.data || responseData;
           console.log(
             "[MigrationDetailPage] Extracted campaign:",
-            fetchedCampaign,
+            fetchedCampaign
+          );
+          console.log(
+            "[MigrationDetailPage] Available fields:",
+            Object.keys(fetchedCampaign || {})
           );
           setCampaign(fetchedCampaign);
         } else {
           console.error(
             "[MigrationDetailPage] API returned error status:",
-            response.status,
+            response.status
           );
           console.error(
             "[MigrationDetailPage] Error response data:",
-            responseData,
+            responseData
           );
           setCampaign(null);
         }
@@ -204,15 +291,34 @@ export default function MigrationDetailPage() {
     fetchCampaign();
   }, [campaignId, authToken]);
 
-  // Fetch job_id from Hyrex API when we have job_code
+  // Fetch job_id from campaign or from Hyrex API when we have job_code
   useEffect(() => {
     const fetchJobId = async () => {
       const jobCode = campaign?.job_code || campaign?.jobCode;
+      const directJobId = campaign?.job_id || campaign?.jobId;
+
+      console.log("[MigrationDetailPage] Checking job_id:", {
+        jobCode,
+        directJobId,
+        hasJobCode: !!jobCode,
+        hasDirectJobId: !!directJobId,
+        hasHyrexToken: !!hyrexAuthToken,
+      });
+
+      // If we have direct job_id from API, use it directly
+      if (directJobId) {
+        console.log(
+          "[MigrationDetailPage] Using direct job_id from API:",
+          directJobId
+        );
+        setJobId(directJobId);
+        return;
+      }
+
       if (!jobCode || !hyrexAuthToken) {
-        console.log("[MigrationDetailPage] Skipping job_id fetch:", {
-          hasJobCode: !!jobCode,
-          hasHyrexToken: !!hyrexAuthToken,
-        });
+        console.log(
+          "[MigrationDetailPage] Skipping job_id fetch - missing required data"
+        );
         return;
       }
 
@@ -221,7 +327,7 @@ export default function MigrationDetailPage() {
           "[MigrationDetailPage] Fetching job_id for job_code:",
           jobCode,
           "with Hyrex token:",
-          !!hyrexAuthToken,
+          !!hyrexAuthToken
         );
         const response = await filterJobsByCode(jobCode, hyrexAuthToken);
         console.log("[MigrationDetailPage] Job lookup response:", response);
@@ -242,127 +348,6 @@ export default function MigrationDetailPage() {
 
     fetchJobId();
   }, [campaign?.job_code, campaign?.jobCode, hyrexAuthToken]);
-
-  // Fetch contacts for this campaign
-  useEffect(() => {
-    const fetchContacts = async () => {
-      if (!authToken || !campaignId) {
-        console.log(
-          "[MigrationDetailPage] Skipping contacts fetch: missing token or campaignId",
-        );
-        return;
-      }
-
-      setCandidatesLoading(true);
-      setCandidatesError(null);
-
-      try {
-        const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
-        if (!TENANT_ID) {
-          throw new Error("Missing TENANT_ID configuration");
-        }
-
-        console.log(
-          "[MigrationDetailPage] Fetching contacts for campaign:",
-          campaignId,
-        );
-
-        const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-        if (!baseUrl) {
-          throw new Error("Missing NEXT_PUBLIC_API_BASE_URL configuration");
-        }
-
-        const response = await fetch(
-          `${baseUrl.replace(/\/$/, "")}/api/v1/contacts/${campaignId}`,
-          {
-            method: "GET",
-            headers: {
-              "tenant-id": TENANT_ID,
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${authToken}`,
-              "ngrok-skip-browser-warning": "69420",
-            },
-          },
-        );
-
-        const contentType = response.headers.get("content-type") || "";
-
-        // For non-JSON responses, read the text once so we don't exhaust the stream twice
-        const isJson = contentType.includes("application/json");
-        const responseText = isJson ? null : await response.text();
-
-        if (!response.ok) {
-          if (isJson) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(
-              errorData?.error ||
-                errorData?.message ||
-                `Failed to fetch contacts: ${response.status}`,
-            );
-          }
-
-          console.error(
-            "[MigrationDetailPage] Non-JSON error response:",
-            (responseText || "").substring(0, 300),
-          );
-          throw new Error(
-            `Failed to fetch contacts (${response.status}): ${(responseText || "").substring(0, 160)}`,
-          );
-        }
-
-        let result: any;
-        try {
-          if (!isJson) {
-            console.error(
-              "[MigrationDetailPage] Expected JSON but got:",
-              (responseText || "").substring(0, 300),
-            );
-            throw new Error("Contacts API did not return JSON");
-          }
-
-          result = await response.json();
-        } catch (parseError) {
-          console.error(
-            "[MigrationDetailPage] Failed to parse contacts JSON:",
-            parseError,
-          );
-          throw new Error("Failed to parse contacts response as JSON");
-        }
-        console.log("[MigrationDetailPage] Contacts response:", result);
-
-        // Transform API response to CandidateRow format
-        if (result.success && result.data?.contacts) {
-          const transformedCandidates: CandidateRow[] =
-            result.data.contacts.map((contact: any) => ({
-              id: contact.id,
-              name: contact.candidate_name || "Unknown",
-              phone: contact.phone_number || "—",
-              email: contact.email || "—",
-              resume: contact.resume_url || null,
-              resumeFileName: contact.resume_url
-                ? contact.resume_url.split("/").pop()
-                : null,
-              candidateId: contact.ats_candidate_id || contact.id,
-            }));
-          setCandidates(transformedCandidates);
-          console.log(
-            "[MigrationDetailPage] Transformed candidates:",
-            transformedCandidates,
-          );
-        } else {
-          setCandidates([]);
-        }
-      } catch (err: any) {
-        console.error("[MigrationDetailPage] Error fetching contacts:", err);
-        setCandidatesError(err?.message || "Failed to fetch contacts");
-        setCandidates([]);
-      } finally {
-        setCandidatesLoading(false);
-      }
-    };
-
-    fetchContacts();
-  }, [authToken, campaignId]);
 
   if (loading) {
     return (
@@ -415,21 +400,6 @@ export default function MigrationDetailPage() {
     dot: "bg-gray-500",
   };
 
-  const filteredCandidates = candidates.filter((candidate) => {
-    if (!candidateSearch.trim()) return true;
-    const query = candidateSearch.toLowerCase();
-    const fields = [
-      candidate.name,
-      candidate.email,
-      candidate.phone,
-      candidate.candidateId,
-      candidate.resumeFileName,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.toLowerCase());
-    return fields.some((field) => field.includes(query));
-  });
-
   const fetchAudioScripts = async () => {
     setAudioScriptsLoading(true);
     try {
@@ -445,7 +415,10 @@ export default function MigrationDetailPage() {
       }
 
       const response = await fetch(
-        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/audio-preview`,
+        `${API_BASE_URL.replace(
+          /\/$/,
+          ""
+        )}/api/v1/campaigns/${campaignId}/audio-preview`,
         {
           method: "GET",
           headers: {
@@ -454,7 +427,7 @@ export default function MigrationDetailPage() {
             Authorization: `Bearer ${authToken}`,
             "ngrok-skip-browser-warning": "69420",
           },
-        },
+        }
       );
 
       if (!response.ok) {
@@ -462,7 +435,7 @@ export default function MigrationDetailPage() {
         throw new Error(
           errorData?.detail ||
             errorData?.message ||
-            "Failed to fetch audio preview",
+            "Failed to fetch audio preview"
         );
       }
 
@@ -490,7 +463,7 @@ export default function MigrationDetailPage() {
               ...audio,
               play_url: playUrl,
             };
-          },
+          }
         );
 
         setAudioScripts(transformedScripts);
@@ -535,7 +508,10 @@ export default function MigrationDetailPage() {
       }
 
       const response = await fetch(
-        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/generate-audio`,
+        `${API_BASE_URL.replace(
+          /\/$/,
+          ""
+        )}/api/v1/campaigns/${campaignId}/generate-audio`,
         {
           method: "POST",
           headers: {
@@ -544,13 +520,13 @@ export default function MigrationDetailPage() {
             Authorization: `Bearer ${authToken}`,
             "ngrok-skip-browser-warning": "69420",
           },
-        },
+        }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          errorData?.detail || errorData?.message || "Failed to generate audio",
+          errorData?.detail || errorData?.message || "Failed to generate audio"
         );
       }
 
@@ -671,8 +647,8 @@ export default function MigrationDetailPage() {
           const fetchUrl = playUrl.startsWith("http")
             ? `/api/audio-proxy?url=${encodeURIComponent(playUrl)}`
             : playUrl.startsWith("/")
-              ? `/api/audio-proxy?url=${encodeURIComponent(playUrl)}`
-              : playUrl;
+            ? `/api/audio-proxy?url=${encodeURIComponent(playUrl)}`
+            : playUrl;
 
           console.log("[Audio Playback] Fetching from:", fetchUrl);
 
@@ -686,7 +662,7 @@ export default function MigrationDetailPage() {
 
           if (!response.ok) {
             throw new Error(
-              `Failed to fetch audio: ${response.status} ${response.statusText}`,
+              `Failed to fetch audio: ${response.status} ${response.statusText}`
             );
           }
 
@@ -760,7 +736,10 @@ export default function MigrationDetailPage() {
       }
 
       const response = await fetch(
-        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}/approve-audio`,
+        `${API_BASE_URL.replace(
+          /\/$/,
+          ""
+        )}/api/v1/campaigns/${campaignId}/approve-audio`,
         {
           method: "POST",
           headers: {
@@ -769,13 +748,13 @@ export default function MigrationDetailPage() {
             Authorization: `Bearer ${authToken}`,
             "ngrok-skip-browser-warning": "69420",
           },
-        },
+        }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          errorData?.detail || errorData?.message || "Failed to approve audio",
+          errorData?.detail || errorData?.message || "Failed to approve audio"
         );
       }
 
@@ -842,7 +821,7 @@ export default function MigrationDetailPage() {
           body: JSON.stringify({
             status: "active",
           }),
-        },
+        }
       );
 
       if (!activateResponse.ok) {
@@ -850,7 +829,7 @@ export default function MigrationDetailPage() {
         throw new Error(
           errorData?.detail ||
             errorData?.message ||
-            "Failed to activate campaign",
+            "Failed to activate campaign"
         );
       }
 
@@ -879,13 +858,13 @@ export default function MigrationDetailPage() {
             campaign_id: campaignId,
             max_concurrent_calls: 5,
           }),
-        },
+        }
       );
 
       if (!dialerResponse.ok) {
         const errorData = await dialerResponse.json().catch(() => ({}));
         throw new Error(
-          errorData?.detail || errorData?.message || "Failed to start dialer",
+          errorData?.detail || errorData?.message || "Failed to start dialer"
         );
       }
 
@@ -896,7 +875,9 @@ export default function MigrationDetailPage() {
         const data = dialerResult.data;
         toast({
           title: "Dialer Started!",
-          description: `${data.calls_initiated || 0} calls initiated. ${data.total_contacts || 0} total contacts in queue.`,
+          description: `${data.calls_initiated || 0} calls initiated. ${
+            data.total_contacts || 0
+          } total contacts in queue.`,
           variant: "default",
         });
 
@@ -961,13 +942,13 @@ export default function MigrationDetailPage() {
             Authorization: `Bearer ${authToken}`,
             "ngrok-skip-browser-warning": "69420",
           },
-        },
+        }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          errorData?.detail || errorData?.message || "Failed to pause dialer",
+          errorData?.detail || errorData?.message || "Failed to pause dialer"
         );
       }
 
@@ -1022,13 +1003,13 @@ export default function MigrationDetailPage() {
             Authorization: `Bearer ${authToken}`,
             "ngrok-skip-browser-warning": "69420",
           },
-        },
+        }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          errorData?.detail || errorData?.message || "Failed to resume dialer",
+          errorData?.detail || errorData?.message || "Failed to resume dialer"
         );
       }
 
@@ -1084,13 +1065,13 @@ export default function MigrationDetailPage() {
             "ngrok-skip-browser-warning": "69420",
           },
           body: JSON.stringify({ campaign_id: campaignId }),
-        },
+        }
       );
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          errorData?.detail || errorData?.message || "Failed to stop dialer",
+          errorData?.detail || errorData?.message || "Failed to stop dialer"
         );
       }
 
@@ -1108,6 +1089,384 @@ export default function MigrationDetailPage() {
       });
     } finally {
       setDialerStopping(false);
+    }
+  };
+
+  const handleDeleteCampaign = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/campaigns/${campaignId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to delete campaign"
+        );
+      }
+
+      toast({
+        title: "Campaign Deleted",
+        description:
+          "Campaign has been moved to trash. You can restore it later.",
+        variant: "default",
+      });
+
+      setShowDeleteDialog(false);
+
+      // Navigate back to migrations page after 1.5 seconds
+      setTimeout(() => {
+        router.push("/campaigns/migrations");
+      }, 1500);
+    } catch (error: any) {
+      console.error("[Delete Campaign Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to delete campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleDeactivateCampaign = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setDeactivateLoading(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(
+          /\/$/,
+          ""
+        )}/api/v1/campaigns/${campaignId}/deactivate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to deactivate campaign"
+        );
+      }
+
+      toast({
+        title: "Campaign Deactivated",
+        description: "Campaign has been deactivated successfully.",
+        variant: "default",
+      });
+
+      setShowDeactivateDialog(false);
+
+      // Update campaign status locally
+      setCampaign((prev: any) => ({
+        ...prev,
+        status: "inactive",
+      }));
+    } catch (error: any) {
+      console.error("[Deactivate Campaign Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to deactivate campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setDeactivateLoading(false);
+    }
+  };
+
+  const handleActivateCampaign = async () => {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+    if (!API_BASE_URL || !TENANT_ID) {
+      toast({
+        title: "Configuration Error",
+        description: "API Base URL or Tenant ID is not configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!authToken) {
+      toast({
+        title: "Authentication Error",
+        description: "Auth token is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setActivateLoading(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL.replace(
+          /\/$/,
+          ""
+        )}/api/v1/campaigns/${campaignId}/activate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "tenant-id": TENANT_ID,
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail ||
+            errorData?.message ||
+            "Failed to activate campaign"
+        );
+      }
+
+      toast({
+        title: "Campaign Activated",
+        description: "Campaign has been activated successfully.",
+        variant: "default",
+      });
+
+      setShowActivateDialog(false);
+
+      // Update campaign status locally
+      setCampaign((prev: any) => ({
+        ...prev,
+        status: "active",
+      }));
+    } catch (error: any) {
+      console.error("[Activate Campaign Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to activate campaign",
+        variant: "destructive",
+      });
+    } finally {
+      setActivateLoading(false);
+    }
+  };
+
+  const handleViewContact = (contact: CandidateRow) => {
+    setSelectedContact(contact);
+    setShowViewContactDialog(true);
+  };
+
+  const handleEditContact = (contact: CandidateRow) => {
+    setSelectedContact(contact);
+    setEditFormData({
+      candidate_name: contact.name,
+      phone_number: contact.phone,
+      email: contact.email,
+    });
+    setShowEditContactDialog(true);
+  };
+
+  const handleDeleteContact = (contactId: string) => {
+    setContactToDelete(contactId);
+    setShowDeleteContactDialog(true);
+  };
+
+  const confirmDeleteContact = async () => {
+    if (!contactToDelete || !authToken) return;
+
+    setDeletingContact(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(
+          /\/$/,
+          ""
+        )}/api/v1/contacts/${campaignId}/${contactToDelete}`,
+        {
+          method: "DELETE",
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to delete contact"
+        );
+      }
+
+      toast({
+        title: "Contact Deleted",
+        description: "Contact has been successfully deleted.",
+        variant: "default",
+      });
+
+      // Remove from local state
+      setCandidates((prev) => prev.filter((c) => c.id !== contactToDelete));
+      setShowDeleteContactDialog(false);
+      setContactToDelete(null);
+
+      // Refetch to sync with server
+      refetchContacts();
+    } catch (error: any) {
+      console.error("[Delete Contact Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to delete contact",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingContact(false);
+    }
+  };
+
+  const confirmEditContact = async () => {
+    if (!selectedContact || !authToken) return;
+
+    setEditingContact(true);
+    try {
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+      const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
+
+      if (!API_BASE_URL || !TENANT_ID) {
+        toast({
+          title: "Configuration Error",
+          description: "API Base URL or Tenant ID is not configured",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL.replace(/\/$/, "")}/api/v1/contacts/${campaignId}/${
+          selectedContact.id
+        }`,
+        {
+          method: "PATCH",
+          headers: {
+            "tenant-id": TENANT_ID,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "ngrok-skip-browser-warning": "69420",
+          },
+          body: JSON.stringify(editFormData),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.detail || errorData?.message || "Failed to update contact"
+        );
+      }
+
+      toast({
+        title: "Contact Updated",
+        description: "Contact has been successfully updated.",
+        variant: "default",
+      });
+
+      // Update local state
+      setCandidates((prev) =>
+        prev.map((c) =>
+          c.id === selectedContact.id
+            ? {
+                ...c,
+                name: editFormData.candidate_name,
+                phone: editFormData.phone_number,
+                email: editFormData.email,
+              }
+            : c
+        )
+      );
+      setShowEditContactDialog(false);
+      setSelectedContact(null);
+
+      // Refetch to sync with server
+      refetchContacts();
+    } catch (error: any) {
+      console.error("[Edit Contact Error]:", error);
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to update contact",
+        variant: "destructive",
+      });
+    } finally {
+      setEditingContact(false);
     }
   };
 
@@ -1190,6 +1549,38 @@ export default function MigrationDetailPage() {
                       <Music className="w-4 h-4" />
                       Campaign Scripts
                     </Button>
+                    <div className="flex gap-2">
+                      {displayStatus === "Running" ? (
+                        <Button
+                          onClick={() => setShowDeactivateDialog(true)}
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 flex-1"
+                        >
+                          <PowerOff className="w-4 h-4" />
+                          Deactivate
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => setShowActivateDialog(true)}
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 flex-1"
+                        >
+                          <Power className="w-4 h-4" />
+                          Activate
+                        </Button>
+                      )}
+                      <Button
+                        onClick={() => setShowDeleteDialog(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 flex-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete
+                      </Button>
+                    </div>
                     <Button
                       onClick={handleActivateAndStartDialer}
                       disabled={dialerActivating || dialerStarting}
@@ -1380,23 +1771,30 @@ export default function MigrationDetailPage() {
                     </p>
                   </div>
                   <span className="text-sm text-gray-500">
-                    {candidateSearch
-                      ? `${filteredCandidates.length} matching · ${candidates.length} total`
-                      : `${candidates.length} total`}
+                    {pagination?.total || 0} candidates found
                   </span>
                 </div>
                 <div className="p-6">
                   <div className="mb-4">
-                    <SearchBox
-                      value={candidateSearch}
-                      onChange={setCandidateSearch}
-                      onClear={() => setCandidateSearch("")}
-                      placeholder="Search candidates by name, email, phone, ID, or resume file"
-                    />
-                    {candidateSearch && (
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <SearchBox
+                          value={searchValue}
+                          onChange={setSearchValue}
+                          onClear={() => setSearchValue("")}
+                          placeholder="Search candidates by name, email, phone, ID, or resume file"
+                        />
+                      </div>
+                      <ContactFilters
+                        filters={filters}
+                        onFiltersChange={updateFilters}
+                        onApply={() => refetchContacts()}
+                        onClear={clearFilters}
+                      />
+                    </div>
+                    {searchValue && (
                       <p className="mt-2 text-xs text-gray-500">
-                        Showing {filteredCandidates.length} of{" "}
-                        {candidates.length}
+                        Searching for "{searchValue}"...
                       </p>
                     )}
                   </div>
@@ -1417,10 +1815,94 @@ export default function MigrationDetailPage() {
                       </p>
                     </div>
                   ) : (
-                    <CandidatesTable
-                      data={filteredCandidates}
-                      onDataChange={setCandidates}
-                    />
+                    <>
+                      <CandidatesTable
+                        data={candidates}
+                        onDataChange={setCandidates}
+                        campaignId={campaignId}
+                        onView={handleViewContact}
+                        onEdit={handleEditContact}
+                        onDelete={handleDeleteContact}
+                      />
+
+                      {/* Pagination UI */}
+                      {pagination && pagination.total_pages > 1 && (
+                        <div className="mt-6">
+                          <PaginationUI>
+                            <PaginationContent>
+                              <PaginationItem>
+                                <PaginationPrevious
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    if (pagination.page > 1)
+                                      goToPage(pagination.page - 1);
+                                  }}
+                                  className={
+                                    pagination.page <= 1
+                                      ? "pointer-events-none opacity-50"
+                                      : "cursor-pointer"
+                                  }
+                                />
+                              </PaginationItem>
+
+                              {Array.from(
+                                { length: Math.min(5, pagination.total_pages) },
+                                (_, i) => {
+                                  // Show pages around current page
+                                  let pageNum = pagination.page;
+                                  if (pagination.total_pages <= 5) {
+                                    pageNum = i + 1;
+                                  } else if (pagination.page <= 3) {
+                                    pageNum = i + 1;
+                                  } else if (
+                                    pagination.page >=
+                                    pagination.total_pages - 2
+                                  ) {
+                                    pageNum = pagination.total_pages - 4 + i;
+                                  } else {
+                                    pageNum = pagination.page - 2 + i;
+                                  }
+
+                                  return (
+                                    <PaginationItem key={pageNum}>
+                                      <PaginationLink
+                                        href="#"
+                                        isActive={pagination.page === pageNum}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          goToPage(pageNum);
+                                        }}
+                                      >
+                                        {pageNum}
+                                      </PaginationLink>
+                                    </PaginationItem>
+                                  );
+                                }
+                              )}
+
+                              <PaginationItem>
+                                <PaginationNext
+                                  href="#"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    if (
+                                      pagination.page < pagination.total_pages
+                                    )
+                                      goToPage(pagination.page + 1);
+                                  }}
+                                  className={
+                                    pagination.page >= pagination.total_pages
+                                      ? "pointer-events-none opacity-50"
+                                      : "cursor-pointer"
+                                  }
+                                />
+                              </PaginationItem>
+                            </PaginationContent>
+                          </PaginationUI>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1584,6 +2066,202 @@ export default function MigrationDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Campaign Confirmation */}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        title="Delete Campaign"
+        description="Are you sure you want to delete this campaign? It will be moved to trash and can be restored later."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={handleDeleteCampaign}
+        loading={deleteLoading}
+      />
+
+      {/* Deactivate Campaign Confirmation */}
+      <ConfirmDialog
+        open={showDeactivateDialog}
+        onOpenChange={setShowDeactivateDialog}
+        title="Deactivate Campaign"
+        description="Are you sure you want to deactivate this campaign? This will pause all campaign activities without deleting it."
+        confirmText="Deactivate"
+        cancelText="Cancel"
+        onConfirm={handleDeactivateCampaign}
+        loading={deactivateLoading}
+      />
+
+      {/* Activate Campaign Confirmation */}
+      <ConfirmDialog
+        open={showActivateDialog}
+        onOpenChange={setShowActivateDialog}
+        title="Activate Campaign"
+        description="Are you sure you want to activate this campaign? This will resume all campaign activities."
+        confirmText="Activate"
+        cancelText="Cancel"
+        onConfirm={handleActivateCampaign}
+        loading={activateLoading}
+      />
+
+      {/* View Contact Dialog */}
+      <Dialog
+        open={showViewContactDialog}
+        onOpenChange={setShowViewContactDialog}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Contact Details</DialogTitle>
+            <DialogDescription>
+              View complete contact information
+            </DialogDescription>
+          </DialogHeader>
+          {selectedContact && (
+            <div className="space-y-4">
+              <div className="border-b pb-3">
+                <label className="text-xs font-semibold text-gray-500 uppercase">
+                  Name
+                </label>
+                <p className="text-sm text-gray-900 font-medium">
+                  {selectedContact.name}
+                </p>
+              </div>
+              <div className="border-b pb-3">
+                <label className="text-xs font-semibold text-gray-500 uppercase">
+                  Phone Number
+                </label>
+                <p className="text-sm text-gray-900">{selectedContact.phone}</p>
+              </div>
+              <div className="border-b pb-3">
+                <label className="text-xs font-semibold text-gray-500 uppercase">
+                  Email
+                </label>
+                <p className="text-sm text-gray-900">{selectedContact.email}</p>
+              </div>
+              {selectedContact.resumeFileName && (
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase">
+                    Resume
+                  </label>
+                  <div className="mt-1">
+                    <a
+                      href={
+                        typeof selectedContact.resume === "string"
+                          ? selectedContact.resume
+                          : undefined
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-700 underline"
+                    >
+                      {selectedContact.resumeFileName}
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowViewContactDialog(false)}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Contact Dialog */}
+      <Dialog
+        open={showEditContactDialog}
+        onOpenChange={setShowEditContactDialog}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Contact</DialogTitle>
+            <DialogDescription>Update contact information</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Name</label>
+              <input
+                type="text"
+                value={editFormData.candidate_name || ""}
+                onChange={(e) =>
+                  setEditFormData({
+                    ...editFormData,
+                    candidate_name: e.target.value,
+                  })
+                }
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">
+                Phone Number
+              </label>
+              <input
+                type="text"
+                value={editFormData.phone_number || ""}
+                onChange={(e) =>
+                  setEditFormData({
+                    ...editFormData,
+                    phone_number: e.target.value,
+                  })
+                }
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700">Email</label>
+              <input
+                type="email"
+                value={editFormData.email || ""}
+                onChange={(e) =>
+                  setEditFormData({
+                    ...editFormData,
+                    email: e.target.value,
+                  })
+                }
+                className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setShowEditContactDialog(false)}
+              disabled={editingContact}
+            >
+              Cancel
+            </Button>
+            <Button onClick={confirmEditContact} disabled={editingContact}>
+              {editingContact ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Contact Confirmation */}
+      <ConfirmDialog
+        open={showDeleteContactDialog}
+        onOpenChange={setShowDeleteContactDialog}
+        title="Delete Contact"
+        description="Are you sure you want to delete this contact? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="destructive"
+        onConfirm={confirmDeleteContact}
+        loading={deletingContact}
+      />
     </>
   );
 }

@@ -47,7 +47,7 @@ interface CreateCampaignModalProps {
       jobInfo: string;
       jobId?: number; // Added for ATS integration
       savedAt: string;
-    }>,
+    }>
   ) => void;
 }
 
@@ -127,13 +127,13 @@ export default function CreateCampaignModal({
         if (stored) {
           console.log(
             "[CreateCampaignModal] Token loaded from localStorage on mount:",
-            !!stored,
+            !!stored
           );
           return stored;
         }
       }
       return undefined;
-    },
+    }
   );
 
   useEffect(() => {
@@ -143,7 +143,7 @@ export default function CreateCampaignModal({
         setTokenFromStorage(stored);
         console.log(
           "[CreateCampaignModal] Token read from localStorage:",
-          !!stored,
+          !!stored
         );
       }
     }
@@ -154,7 +154,7 @@ export default function CreateCampaignModal({
   console.log(
     "[CreateCampaignModal] Effective authToken:",
     !!effectiveToken,
-    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined",
+    effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined"
   );
 
   const {
@@ -253,7 +253,7 @@ export default function CreateCampaignModal({
   const [atsPageSize, setAtsPageSize] = useState(25);
   const [atsSearch, setAtsSearch] = useState("");
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
   const [selectAllPages, setSelectAllPages] = useState(false);
   const [atsTotalCount, setAtsTotalCount] = useState(0);
@@ -284,7 +284,7 @@ export default function CreateCampaignModal({
   const getCandidateKey = (
     candidate: any,
     idx: number,
-    pageOverride?: number,
+    pageOverride?: number
   ) => {
     return (
       candidate?.id?.toString() ||
@@ -304,7 +304,7 @@ export default function CreateCampaignModal({
     jobId: number,
     page: number = 1,
     pageSize: number = 25,
-    knownTotalCount?: number,
+    knownTotalCount?: number
   ) => {
     setAtsCandidatesLoading(true);
     setAtsCandidatesError("");
@@ -318,7 +318,7 @@ export default function CreateCampaignModal({
       if (effectiveToken) {
         headers["Authorization"] = `${authFormat} ${effectiveToken}`;
         console.log(
-          `[fetchAtsCandidates] Using ${authFormat} format on page ${page}`,
+          `[fetchAtsCandidates] Using ${authFormat} format on page ${page}`
         );
       }
 
@@ -327,7 +327,7 @@ export default function CreateCampaignModal({
         {
           method: "GET",
           headers,
-        },
+        }
       );
 
       console.log("[fetchAtsCandidates] Response status:", response.status);
@@ -336,7 +336,7 @@ export default function CreateCampaignModal({
       if (response.status === 401 && effectiveToken) {
         const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
         console.log(
-          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`,
+          `[fetchAtsCandidates] Got 401 with ${authFormat}, trying ${alternateFormat}...`
         );
         headers["Authorization"] = `${alternateFormat} ${effectiveToken}`;
         response = await fetch(
@@ -344,11 +344,11 @@ export default function CreateCampaignModal({
           {
             method: "GET",
             headers,
-          },
+          }
         );
         console.log(
           `[fetchAtsCandidates] ${alternateFormat} attempt status:`,
-          response.status,
+          response.status
         );
 
         // If successful with alternate format, remember it
@@ -356,7 +356,7 @@ export default function CreateCampaignModal({
           authFormat = alternateFormat;
           setStoredAuthFormat(alternateFormat);
           console.log(
-            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`,
+            `[fetchAtsCandidates] Saved ${alternateFormat} as preferred format`
           );
         }
       }
@@ -370,7 +370,7 @@ export default function CreateCampaignModal({
       const data = await response.json();
       const resultsReceived = data.results?.length || 0;
       console.log(
-        `[fetchAtsCandidates] Page ${page}: Got ${resultsReceived} candidates, API count: ${data.count}`,
+        `[fetchAtsCandidates] Page ${page}: Got ${resultsReceived} candidates, API count: ${data.count}`
       );
 
       // Store total count
@@ -383,7 +383,7 @@ export default function CreateCampaignModal({
       ) {
         actualTotalCount = knownTotalCount;
         console.log(
-          `[fetchAtsCandidates] API didn't return count, using known count: ${actualTotalCount}`,
+          `[fetchAtsCandidates] API didn't return count, using known count: ${actualTotalCount}`
         );
       }
 
@@ -411,13 +411,13 @@ export default function CreateCampaignModal({
       if (actualTotalCount > 0) {
         const maxPage = Math.ceil(actualTotalCount / pageSize);
         console.log(
-          `[fetchAtsCandidates] Total: ${actualTotalCount}, MaxPage: ${maxPage}, CurrentPage: ${page}`,
+          `[fetchAtsCandidates] Total: ${actualTotalCount}, MaxPage: ${maxPage}, CurrentPage: ${page}`
         );
 
         // If requested page exceeds max, redirect to last page
         if (page > maxPage && page > 1) {
           console.log(
-            `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`,
+            `[fetchAtsCandidates] Page ${page} > max ${maxPage}, redirecting...`
           );
           setAtsPage(maxPage);
           await fetchAtsCandidates(jobId, maxPage, pageSize, actualTotalCount);
@@ -543,6 +543,18 @@ export default function CreateCampaignModal({
       setError("CTC must be valid numbers.");
       return;
     }
+    if (minCTCNum > maxCTCNum) {
+      setError("Min CTC cannot exceed max CTC.");
+      return;
+    }
+
+    // Validate that job code is selected (required for ATS import)
+    if (!jobCode || jobCode.trim() === "") {
+      setError(
+        "Please select a job code from Hyrex. This is required to import candidates from ATS."
+      );
+      return;
+    }
     if (minExpNum < 0 || maxExpNum < 0 || minCTCNum < 0 || maxCTCNum < 0) {
       setError("Values cannot be negative.");
       return;
@@ -551,14 +563,10 @@ export default function CreateCampaignModal({
       setError("Min experience cannot exceed max experience.");
       return;
     }
-    if (minCTCNum > maxCTCNum) {
-      setError("Min CTC cannot exceed max CTC.");
-      return;
-    }
 
     if (!API_BASE_URL || !TENANT_ID) {
       console.error(
-        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID",
+        "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID"
       );
     }
 
@@ -1216,7 +1224,7 @@ export default function CreateCampaignModal({
                         className="h-6 px-1 text-gray-500 hover:text-gray-700"
                         onClick={() =>
                           setManualResumes((prev) =>
-                            prev.filter((_, idx) => idx !== i),
+                            prev.filter((_, idx) => idx !== i)
                           )
                         }
                       >
@@ -1369,7 +1377,7 @@ export default function CreateCampaignModal({
               onChange={(e) => {
                 setUploadError("");
                 const files = Array.from(e.target.files ?? []).filter(
-                  isAccepted,
+                  isAccepted
                 );
                 if (files.length > 50) {
                   setUploadError("You can upload a maximum of 50 files.");
@@ -1390,7 +1398,7 @@ export default function CreateCampaignModal({
                 e.stopPropagation();
                 setUploadError("");
                 let files = Array.from(e.dataTransfer.files ?? []).filter(
-                  isAccepted,
+                  isAccepted
                 );
                 if (files.length === 0) return;
                 const combined = [...bulkFiles, ...files];
@@ -1447,7 +1455,7 @@ export default function CreateCampaignModal({
                       className="h-6 px-1 text-gray-500 hover:text-gray-700"
                       onClick={() =>
                         setBulkFiles((prev) =>
-                          prev.filter((_, idx) => idx !== i),
+                          prev.filter((_, idx) => idx !== i)
                         )
                       }
                     >
@@ -1482,10 +1490,10 @@ export default function CreateCampaignModal({
                     if (bulkFiles.length === 0) return;
                     setManualResumes((prev) => {
                       const existingKeys = new Set(
-                        prev.map((f) => `${f.name}-${f.size}`),
+                        prev.map((f) => `${f.name}-${f.size}`)
                       );
                       const toAdd = bulkFiles.filter(
-                        (f) => !existingKeys.has(`${f.name}-${f.size}`),
+                        (f) => !existingKeys.has(`${f.name}-${f.size}`)
                       );
                       return [...toAdd, ...prev];
                     });
@@ -1616,8 +1624,8 @@ export default function CreateCampaignModal({
                         (atsCandidates.length > 0 &&
                           atsCandidates.every((candidate, idx) =>
                             selectedCandidates.has(
-                              getCandidateKey(candidate, idx),
-                            ),
+                              getCandidateKey(candidate, idx)
+                            )
                           ))
                       }
                       onChange={(e) => {
@@ -1643,8 +1651,8 @@ export default function CreateCampaignModal({
                             atsTotalCount ? ` (${atsTotalCount})` : ""
                           } selected`
                         : selectedCandidates.size > 0
-                          ? `${selectedCandidates.size} selected`
-                          : "Select all"}
+                        ? `${selectedCandidates.size} selected`
+                        : "Select all"}
                     </span>
                   </div>
                   {(selectAllPages || selectedCandidates.size > 0) && (
@@ -1724,7 +1732,7 @@ export default function CreateCampaignModal({
                             .filter(Boolean)
                             .map((v: string) => v.toLowerCase());
                           return fields.some((field: string) =>
-                            field.includes(q),
+                            field.includes(q)
                           );
                         })
                         .map((candidate: any, idx: number) => {
@@ -1762,7 +1770,7 @@ export default function CreateCampaignModal({
                               <td className="px-3 py-4 text-gray-700 whitespace-nowrap text-xs">
                                 {candidate.submission_on
                                   ? new Date(
-                                      candidate.submission_on,
+                                      candidate.submission_on
                                     ).toLocaleDateString("en-US", {
                                       month: "short",
                                       day: "numeric",
@@ -1840,7 +1848,7 @@ export default function CreateCampaignModal({
                             await fetchAtsCandidates(
                               jobId,
                               newPage,
-                              atsPageSize,
+                              atsPageSize
                             );
                         }}
                       >
@@ -1866,7 +1874,7 @@ export default function CreateCampaignModal({
                             await fetchAtsCandidates(
                               jobId,
                               newPage,
-                              atsPageSize,
+                              atsPageSize
                             );
                         }}
                       >
@@ -1915,7 +1923,7 @@ export default function CreateCampaignModal({
                   const selected = selectAllPages
                     ? atsCandidates
                     : atsCandidates.filter((candidate, idx) =>
-                        selectedCandidates.has(getCandidateKey(candidate, idx)),
+                        selectedCandidates.has(getCandidateKey(candidate, idx))
                       );
                   console.log("Importing candidates:", selected);
                   // For now, just close the modal
@@ -1929,8 +1937,8 @@ export default function CreateCampaignModal({
                     ? `(${atsTotalCount})`
                     : "(All)"
                   : selectedCandidates.size > 0
-                    ? `(${selectedCandidates.size})`
-                    : "Selected"}
+                  ? `(${selectedCandidates.size})`
+                  : "Selected"}
               </Button>
             </div>
           </div>
