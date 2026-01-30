@@ -4,7 +4,9 @@ import { useEffect, useState, useMemo } from "react";
 import MainLayout from "@/components/layouts/MainLayout";
 import { useRouter } from "next/navigation";
 import MigrationCard from "@/components/MigrationCard";
-import { ChevronDown, ArrowLeft, Search } from "lucide-react";
+import CreateCampaignModal from "@/components/CreateCampaignModal";
+import { HyrexLoginDialog } from "@/components/hyrex/HyrexLoginDialog";
+import { ChevronDown, ArrowLeft, Search, Plus } from "lucide-react";
 import { useCampaigns } from "@/hooks/useCampaigns";
 import { useCampaignSearch } from "@/hooks/useCampaignSearch";
 import { Campaign, CampaignSearchFilters } from "@/types/campaign";
@@ -36,6 +38,9 @@ interface LegacyCampaign {
 export default function MigrationsPage() {
   const router = useRouter();
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const [hyrexToken, setHyrexToken] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<string | null>(null);
   const [deletingCampaigns, setDeletingCampaigns] = useState<Set<string>>(
@@ -264,6 +269,35 @@ export default function MigrationsPage() {
     setUseSearch(false);
   };
 
+  const handleCreateCampaign = () => {
+    // Check if user has Hyrex token
+    const storedHyrexToken =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("hyrex-auth-token")
+        : null;
+
+    if (storedHyrexToken) {
+      setHyrexToken(storedHyrexToken);
+      setIsModalOpen(true);
+    } else {
+      setShowLoginDialog(true);
+    }
+  };
+
+  const handleHyrexLoginSuccess = (token: string) => {
+    setHyrexToken(token);
+    setShowLoginDialog(false);
+    setIsModalOpen(true);
+  };
+
+  const handleCampaignCreated = () => {
+    setIsModalOpen(false);
+    // Refresh campaigns after creation
+    if (authToken) {
+      fetchCampaigns();
+    }
+  };
+
   const handlePageChange = (newPage: number) => {
     setSearchFilters({ ...searchFilters, page: newPage });
     if (useSearch && authToken) {
@@ -454,13 +488,22 @@ export default function MigrationsPage() {
         <h1 className="text-2xl font-bold text-gray-900">
           Campaign Migrations
         </h1>
-        <button
-          onClick={() => router.push("/campaigns")}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Campaigns
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleCreateCampaign}
+            className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Create Campaign
+          </button>
+          <button
+            onClick={() => router.push("/campaigns")}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Back to Campaigns
+          </button>
+        </div>
       </div>
 
       <div className="mb-6 space-y-4">
@@ -630,6 +673,22 @@ export default function MigrationsPage() {
           )}
         </div>
       )}
+
+      {/* Create Campaign Modal */}
+      <CreateCampaignModal
+        open={isModalOpen}
+        onOpenChange={setIsModalOpen}
+        authToken={hyrexToken || undefined}
+        onCreated={handleCampaignCreated}
+      />
+
+      {/* Hyrex Login Dialog */}
+      <HyrexLoginDialog
+        open={showLoginDialog}
+        onOpenChange={setShowLoginDialog}
+        onSuccess={handleHyrexLoginSuccess}
+        description="Enter your Hyrex credentials to fetch job codes and create campaigns."
+      />
 
       {/* Delete Campaign Confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

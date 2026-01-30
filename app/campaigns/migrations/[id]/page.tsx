@@ -264,6 +264,10 @@ export default function MigrationDetailPage() {
             "[MigrationDetailPage] Extracted campaign:",
             fetchedCampaign
           );
+          console.log(
+            "[MigrationDetailPage] Available fields:",
+            Object.keys(fetchedCampaign || {})
+          );
           setCampaign(fetchedCampaign);
         } else {
           console.error(
@@ -287,15 +291,34 @@ export default function MigrationDetailPage() {
     fetchCampaign();
   }, [campaignId, authToken]);
 
-  // Fetch job_id from Hyrex API when we have job_code
+  // Fetch job_id from campaign or from Hyrex API when we have job_code
   useEffect(() => {
     const fetchJobId = async () => {
       const jobCode = campaign?.job_code || campaign?.jobCode;
+      const directJobId = campaign?.job_id || campaign?.jobId;
+
+      console.log("[MigrationDetailPage] Checking job_id:", {
+        jobCode,
+        directJobId,
+        hasJobCode: !!jobCode,
+        hasDirectJobId: !!directJobId,
+        hasHyrexToken: !!hyrexAuthToken,
+      });
+
+      // If we have direct job_id from API, use it directly
+      if (directJobId) {
+        console.log(
+          "[MigrationDetailPage] Using direct job_id from API:",
+          directJobId
+        );
+        setJobId(directJobId);
+        return;
+      }
+
       if (!jobCode || !hyrexAuthToken) {
-        console.log("[MigrationDetailPage] Skipping job_id fetch:", {
-          hasJobCode: !!jobCode,
-          hasHyrexToken: !!hyrexAuthToken,
-        });
+        console.log(
+          "[MigrationDetailPage] Skipping job_id fetch - missing required data"
+        );
         return;
       }
 
