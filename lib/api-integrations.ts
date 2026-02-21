@@ -124,15 +124,37 @@ export async function filterJobsByCode(
   }
 
   try {
-    const authFormat = getStoredAuthFormat();
-    const headers = buildHeaders(authToken, authFormat);
+    let authFormat = getStoredAuthFormat();
+    let headers = buildHeaders(authToken, authFormat);
     
-    const response = await fetch(url, {
+    // Try with stored format first
+    let response = await fetch(url, {
       method: "GET",
       headers,
     });
 
+    // If 401, try alternate format
+    if (response.status === 401 && authToken) {
+      const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
+      console.log(`[filterJobsByCode] Got 401 with ${authFormat}, trying ${alternateFormat}...`);
+      headers = buildHeaders(authToken, alternateFormat);
+      response = await fetch(url, {
+        method: "GET",
+        headers,
+      });
+      console.log(`[filterJobsByCode] ${alternateFormat} attempt status:`, response.status);
+      
+      // If successful with alternate format, remember it
+      if (response.ok) {
+        authFormat = alternateFormat;
+        setStoredAuthFormat(alternateFormat);
+        console.log(`[filterJobsByCode] Saved ${alternateFormat} as preferred format`);
+      }
+    }
+
     if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      console.error("[filterJobsByCode] Error:", response.status, errorText.substring(0, 300));
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 

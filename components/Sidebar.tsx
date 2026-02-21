@@ -21,7 +21,7 @@ import {
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
-  { icon: Megaphone, label: "Campaigns", href: "/campaigns" },
+  { icon: Megaphone, label: "Campaigns", href: "/campaigns/migrations" },
   { icon: FileText, label: "Templates", href: "/templates" },
   { icon: MessageSquare, label: "Transactional", href: "#" },
   { icon: ClipboardList, label: "Deliveries & Drafts", href: "#" },

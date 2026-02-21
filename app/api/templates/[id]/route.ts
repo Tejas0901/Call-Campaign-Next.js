@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-// GET /api/templates/[id] - Fetch a specific template
+// GET /api/v1/templates/[id] - Fetch a specific template
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const tenantId = request.headers.get("tenant-id");
+
     if (!API_BASE_URL) {
       return NextResponse.json(
         { error: "API base URL not configured" },
@@ -16,8 +19,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    const response = await fetch(`${API_BASE_URL}/api/templates/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/templates/${id}`, {
       headers: {
+        "tenant-id": tenantId || "",
+        "Content-Type": "application/json",
+        Authorization: authHeader || "",
         "ngrok-skip-browser-warning": "true",
       },
     });
@@ -41,12 +47,15 @@ export async function GET(
   }
 }
 
-// PUT /api/templates/[id] - Update a specific template
+// PUT /api/v1/templates/[id] - Update a specific template
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const tenantId = request.headers.get("tenant-id");
+
     if (!API_BASE_URL) {
       return NextResponse.json(
         { error: "API base URL not configured" },
@@ -57,10 +66,12 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    const response = await fetch(`${API_BASE_URL}/api/templates/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/templates/${id}`, {
       method: "PUT",
       headers: {
+        "tenant-id": tenantId || "",
         "Content-Type": "application/json",
+        Authorization: authHeader || "",
         "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify(body),
@@ -85,12 +96,15 @@ export async function PUT(
   }
 }
 
-// DELETE /api/templates/[id] - Delete a specific template
+// DELETE /api/v1/templates/[id] - Delete a specific template
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const tenantId = request.headers.get("tenant-id");
+
     if (!API_BASE_URL) {
       return NextResponse.json(
         { error: "API base URL not configured" },
@@ -99,10 +113,12 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const response = await fetch(`${API_BASE_URL}/api/templates/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/templates/${id}`, {
       method: "DELETE",
       headers: {
+        "tenant-id": tenantId || "",
         "Content-Type": "application/json",
+        Authorization: authHeader || "",
         "ngrok-skip-browser-warning": "true",
       },
     });

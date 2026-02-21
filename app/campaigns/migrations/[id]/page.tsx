@@ -340,8 +340,12 @@ export default function MigrationDetailPage() {
           console.warn("[MigrationDetailPage] No job found for code:", jobCode);
           setJobId(null);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("[MigrationDetailPage] Error fetching job_id:", error);
+        // Only show error for non-401 errors, since 401 might just mean expired token
+        if (error.message?.includes("401")) {
+          console.warn("[MigrationDetailPage] Authentication error - token may be expired");
+        }
         setJobId(null);
       }
     };

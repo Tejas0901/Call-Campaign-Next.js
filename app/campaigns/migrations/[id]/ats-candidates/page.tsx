@@ -96,8 +96,13 @@ export default function MigrationAtsCandidatesPage() {
         if (response.results && response.results.length > 0) {
           setJobId(response.results[0].id);
         }
-      } catch (error) {
-        console.error("Error fetching job_id:", error);
+      } catch (error: any) {
+        console.error('[ATS Candidates] Error filtering jobs by code:', error);
+        // Only show error for non-401 errors, since 401 might just mean expired token
+        if (!error.message?.includes("401")) {
+          // Optionally show error to user
+        }
+        setJobId(null);
       }
     };
 

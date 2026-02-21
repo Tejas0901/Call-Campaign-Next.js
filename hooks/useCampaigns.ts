@@ -1,21 +1,28 @@
 import { useState, useCallback } from "react";
+import { Campaign as FullCampaign } from "@/types/campaign";
 
-interface Campaign {
+// Legacy campaign type from the API response
+interface LegacyCampaign {
   id: string;
   job_role: string;
-  status: "draft" | "active";
+  status: "draft" | "active" | "inactive";
   created_at: string;
+  is_deleted?: boolean;
+  deleted_at?: string;
 }
 
+// Export both types for use in components
+export type { LegacyCampaign };
+
 interface UseCampaignsReturn {
-  campaigns: Campaign[];
+  campaigns: LegacyCampaign[];
   loading: boolean;
   error: string | null;
   fetchCampaigns: () => Promise<void>;
 }
 
 export function useCampaigns(authToken?: string): UseCampaignsReturn {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [campaigns, setCampaigns] = useState<LegacyCampaign[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
