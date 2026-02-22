@@ -9,6 +9,7 @@ interface LegacyCampaign {
   created_at: string;
   is_deleted?: boolean;
   deleted_at?: string;
+  created_by?: string;
 }
 
 // Export both types for use in components
@@ -21,7 +22,7 @@ interface UseCampaignsReturn {
   fetchCampaigns: () => Promise<void>;
 }
 
-export function useCampaigns(authToken?: string): UseCampaignsReturn {
+export function useCampaigns(authToken?: string, user?: { id: string; role: string }): UseCampaignsReturn {
   const [campaigns, setCampaigns] = useState<LegacyCampaign[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +64,16 @@ export function useCampaigns(authToken?: string): UseCampaignsReturn {
       console.log("[useCampaigns] Response:", result);
 
       if (result.success && result.data?.campaigns) {
-        setCampaigns(result.data.campaigns);
+        let fetchedCampaigns = result.data.campaigns;
+        
+        // If user is a recruiter, only show their campaigns
+        if (user?.role === 'recruiter') {
+          fetchedCampaigns = fetchedCampaigns.filter(
+            (campaign: LegacyCampaign) => campaign.created_by === user.id
+          );
+        }
+        
+        setCampaigns(fetchedCampaigns);
       } else {
         throw new Error("Invalid response format");
       }
@@ -75,7 +85,7 @@ export function useCampaigns(authToken?: string): UseCampaignsReturn {
     } finally {
       setLoading(false);
     }
-  }, [authToken]);
+  }, [authToken, user]);
 
   return {
     campaigns,

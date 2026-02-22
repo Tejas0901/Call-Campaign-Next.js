@@ -25,12 +25,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useAuth } from "@/context/auth-context";
 
 // Legacy campaign type is now imported from useCampaigns hook
 
 export default function MigrationsPage() {
   const router = useRouter();
   const { showLoading, hideLoading } = useLoading();
+  const { user } = useAuth();
   const [authToken, setAuthToken] = useState<string | undefined>(undefined);
   const [hyrexToken, setHyrexToken] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -67,7 +69,7 @@ export default function MigrationsPage() {
     loading,
     error,
     fetchCampaigns,
-  } = useCampaigns(authToken);
+  } = useCampaigns(authToken, user);
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState("");
@@ -90,7 +92,7 @@ export default function MigrationsPage() {
     try {
       const stored =
         typeof window !== "undefined"
-          ? window.localStorage.getItem("auth-token")
+          ? window.localStorage.getItem("callbot_access_token")
           : null;
       if (stored) {
         setAuthToken(stored);
@@ -156,7 +158,10 @@ export default function MigrationsPage() {
 
   // Update campaigns when fetched
   useEffect(() => {
-    console.log("[MigrationsPage] Fetched campaigns updated:", fetchedCampaigns);
+    console.log(
+      "[MigrationsPage] Fetched campaigns updated:",
+      fetchedCampaigns
+    );
     setCampaigns(fetchedCampaigns);
   }, [fetchedCampaigns]);
 
@@ -188,7 +193,11 @@ export default function MigrationsPage() {
       min_ctc: 0, // Default value
       max_ctc: 0, // Default value
       ctc_negotiable: false, // Default value
-      status: (legacy.status === "inactive" ? "paused" : legacy.status === "active" ? "active" : "draft") as "draft" | "active" | "paused" | "completed",
+      status: (legacy.status === "inactive"
+        ? "paused"
+        : legacy.status === "active"
+        ? "active"
+        : "draft") as "draft" | "active" | "paused" | "completed",
       total_contacts: 0, // Default value
       completed_calls: 0, // Default value
       failed_calls: 0, // Default value
@@ -209,7 +218,12 @@ export default function MigrationsPage() {
 
   // Filter campaigns based on status
   useEffect(() => {
-    console.log("[MigrationsPage] Filtering campaigns. Status filter:", statusFilter, "Campaigns:", campaigns);
+    console.log(
+      "[MigrationsPage] Filtering campaigns. Status filter:",
+      statusFilter,
+      "Campaigns:",
+      campaigns
+    );
     let filtered: (LegacyCampaign | Campaign)[] = [];
     if (statusFilter === "active") {
       filtered = campaigns.filter((c) => c.status === "active");
@@ -250,7 +264,12 @@ export default function MigrationsPage() {
 
   // Determine which campaigns to display
   const displayCampaigns = useMemo(() => {
-    console.log("[MigrationsPage] Computing displayCampaigns. useSearch:", useSearch, "filteredCampaigns:", filteredCampaigns);
+    console.log(
+      "[MigrationsPage] Computing displayCampaigns. useSearch:",
+      useSearch,
+      "filteredCampaigns:",
+      filteredCampaigns
+    );
     if (useSearch) {
       console.log("[MigrationsPage] Using search results:", searchedCampaigns);
       return searchedCampaigns;
@@ -545,9 +564,19 @@ export default function MigrationsPage() {
       loading,
       searchLoading,
       error,
-      searchError
+      searchError,
     });
-  }, [campaigns, filteredCampaigns, displayCampaigns, useSearch, statusFilter, loading, searchLoading, error, searchError]);
+  }, [
+    campaigns,
+    filteredCampaigns,
+    displayCampaigns,
+    useSearch,
+    statusFilter,
+    loading,
+    searchLoading,
+    error,
+    searchError,
+  ]);
 
   return (
     <MainLayout>
