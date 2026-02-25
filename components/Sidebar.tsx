@@ -16,6 +16,7 @@ import {
   Database,
   FileText,
   CreditCard,
+  FileBarChart,
 } from "lucide-react";
 
 const menuItems = [

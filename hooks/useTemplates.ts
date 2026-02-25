@@ -3,7 +3,7 @@ import { Template } from "@/types/template";
 
 // Helper function to get auth headers
 const getAuthHeaders = () => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('auth-token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('callbot_access_token') : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };

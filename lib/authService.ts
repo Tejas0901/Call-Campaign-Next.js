@@ -336,6 +336,33 @@ const authService = {
 
     return data.data || data;
   },
+
+  /**
+   * Validate if the token is still valid by checking if it's expired
+   * @param token JWT token to validate
+   * @returns boolean indicating if token is valid
+   */
+  isTokenValid(token: string): boolean {
+    try {
+      if (!token) return false;
+      
+      // Remove 'Bearer ' prefix if present
+      const cleanToken = token.startsWith('Bearer ') ? token.substring(7) : token;
+      
+      // Decode JWT token without verification (we're just checking expiration)
+      const parts = cleanToken.split('.');
+      if (parts.length !== 3) return false;
+      
+      const payload = JSON.parse(atob(parts[1]));
+      const currentTime = Math.floor(Date.now() / 1000);
+      
+      // Check if token is expired (with 5 minute buffer)
+      return payload.exp && payload.exp > currentTime + 300;
+    } catch (error) {
+      console.error('Token validation error:', error);
+      return false;
+    }
+  },
 };
 
 export default authService;

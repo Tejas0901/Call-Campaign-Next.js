@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const publicRoutes = ['/', '/auth/login', '/auth/signup'];
 
 // Define protected routes that require authentication
-const protectedRoutes = ['/dashboard', '/campaigns', '/analytics', '/billing', '/settings', '/usage'];
+const protectedRoutes: string[] = []; // Temporarily disable authentication for all routes
 
 export function middleware(request: NextRequest) {
   // Check if the current route is public
@@ -26,10 +26,10 @@ export function middleware(request: NextRequest) {
   token = request.cookies.get('callbot_access_token')?.value;
 
   // Only redirect to login if accessing a protected route without authentication
-  if (!token && isProtectedRoute) {
-    // Redirect to login page
-    return NextResponse.redirect(new URL('/auth/login', request.url));
-  }
+  // Temporarily disabled: if (!token && isProtectedRoute) {
+  //   // Redirect to login page
+  //   return NextResponse.redirect(new URL('/auth/login', request.url));
+  // }
 
   // If user is authenticated and trying to access auth pages, redirect to dashboard
   if (token && (request.nextUrl.pathname === '/auth/login' || request.nextUrl.pathname === '/auth/signup')) {

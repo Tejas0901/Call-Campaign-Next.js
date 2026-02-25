@@ -32,7 +32,7 @@ export default function MigrationAtsCandidatesPage() {
   const [atsTotalCount, setAtsTotalCount] = useState(0);
   const [atsSearch, setAtsSearch] = useState("");
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(
-    new Set(),
+    new Set()
   );
   const [selectAllPages, setSelectAllPages] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export default function MigrationAtsCandidatesPage() {
   // Get auth tokens
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const appToken = window.localStorage.getItem("auth-token");
+    const appToken = window.localStorage.getItem("callbot_access_token");
     const hyrexToken = window.localStorage.getItem("hyrex-auth-token");
     if (appToken) setAuthToken(appToken);
     if (hyrexToken) setHyrexAuthToken(hyrexToken);
@@ -97,7 +97,7 @@ export default function MigrationAtsCandidatesPage() {
           setJobId(response.results[0].id);
         }
       } catch (error: any) {
-        console.error('[ATS Candidates] Error filtering jobs by code:', error);
+        console.error("[ATS Candidates] Error filtering jobs by code:", error);
         // Only show error for non-401 errors, since 401 might just mean expired token
         if (!error.message?.includes("401")) {
           // Optionally show error to user
@@ -132,7 +132,7 @@ export default function MigrationAtsCandidatesPage() {
   const getCandidateKey = (
     candidate: any,
     idx: number,
-    pageOverride?: number,
+    pageOverride?: number
   ) =>
     candidate?.id?.toString() ||
     candidate?.submission_id?.toString() ||
@@ -148,7 +148,7 @@ export default function MigrationAtsCandidatesPage() {
     jobId: number,
     page: number = 1,
     pageSize: number = 25,
-    knownTotalCount?: number,
+    knownTotalCount?: number
   ) => {
     setAtsCandidatesLoading(true);
     setAtsCandidatesError("");
@@ -198,7 +198,7 @@ export default function MigrationAtsCandidatesPage() {
     const selected = selectAllPages
       ? atsCandidates
       : atsCandidates.filter((candidate, idx) =>
-          selectedCandidates.has(getCandidateKey(candidate, idx)),
+          selectedCandidates.has(getCandidateKey(candidate, idx))
         );
 
     if (selected.length === 0) return;
@@ -208,12 +208,12 @@ export default function MigrationAtsCandidatesPage() {
 
     // Basic validation: phone number is required by the API
     const missingPhone = selected.filter(
-      (candidate) => !candidate.candidate_mobile,
+      (candidate) => !candidate.candidate_mobile
     );
     if (missingPhone.length > 0) {
       setImportLoading(false);
       setImportError(
-        "At least one selected candidate is missing a phone number. Please ensure phone_number is present before importing.",
+        "At least one selected candidate is missing a phone number. Please ensure phone_number is present before importing."
       );
       return;
     }
@@ -264,7 +264,7 @@ export default function MigrationAtsCandidatesPage() {
             ...(authToken && { Authorization: `Bearer ${authToken}` }),
           },
           body: JSON.stringify({ contacts: contactsPayload }),
-        },
+        }
       );
 
       if (!response.ok) {
@@ -272,7 +272,7 @@ export default function MigrationAtsCandidatesPage() {
         throw new Error(
           errorData.message ||
             errorData.error ||
-            `Failed to import candidates (${response.status})`,
+            `Failed to import candidates (${response.status})`
         );
       }
 
@@ -283,7 +283,7 @@ export default function MigrationAtsCandidatesPage() {
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem(
           `ats-candidates-${campaignId}`,
-          JSON.stringify(selected),
+          JSON.stringify(selected)
         );
       }
 
@@ -292,7 +292,7 @@ export default function MigrationAtsCandidatesPage() {
     } catch (error: any) {
       console.error("[importSelectedCandidates] Error:", error);
       setImportError(
-        error?.message || "Failed to import candidates. Please try again.",
+        error?.message || "Failed to import candidates. Please try again."
       );
     } finally {
       setImportLoading(false);
@@ -399,8 +399,8 @@ export default function MigrationAtsCandidatesPage() {
                         (atsCandidates.length > 0 &&
                           atsCandidates.every((candidate, idx) =>
                             selectedCandidates.has(
-                              getCandidateKey(candidate, idx),
-                            ),
+                              getCandidateKey(candidate, idx)
+                            )
                           ))
                       }
                       onChange={(e) => {
@@ -425,8 +425,8 @@ export default function MigrationAtsCandidatesPage() {
                             atsTotalCount ? ` (${atsTotalCount})` : ""
                           } selected`
                         : selectedCandidates.size > 0
-                          ? `${selectedCandidates.size} selected`
-                          : "Select all"}
+                        ? `${selectedCandidates.size} selected`
+                        : "Select all"}
                     </span>
                   </div>
                   {(selectAllPages || selectedCandidates.size > 0) && (
@@ -509,7 +509,7 @@ export default function MigrationAtsCandidatesPage() {
                           .filter(Boolean)
                           .map((v: string) => v.toLowerCase());
                         return fields.some((field: string) =>
-                          field.includes(q),
+                          field.includes(q)
                         );
                       })
                       .map((candidate: any, idx: number) => {
@@ -547,7 +547,7 @@ export default function MigrationAtsCandidatesPage() {
                             <td className="px-4 py-3 text-gray-700 whitespace-nowrap text-xs">
                               {candidate.submission_on
                                 ? new Date(
-                                    candidate.submission_on,
+                                    candidate.submission_on
                                   ).toLocaleDateString("en-US", {
                                     month: "short",
                                     day: "numeric",
@@ -703,8 +703,8 @@ export default function MigrationAtsCandidatesPage() {
                           ? ` (${atsTotalCount})`
                           : " (All)"
                         : selectedCandidates.size > 0
-                          ? ` (${selectedCandidates.size})`
-                          : ""}
+                        ? ` (${selectedCandidates.size})`
+                        : ""}
                     </>
                   )}
                 </Button>

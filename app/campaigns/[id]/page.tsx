@@ -20,6 +20,7 @@ import Topbar from "@/components/Topbar";
 import CandidatesTable, {
   CandidateRow,
 } from "@/components/ui/candidates-table";
+import ReportsTable from "@/components/campaigns/ReportsTable";
 import { useAuth } from "@/context/auth-context";
 
 export default function CampaignDetailPage() {
@@ -456,6 +457,13 @@ export default function CampaignDetailPage() {
                 />
               </div>
             </div>
+
+            {/* Reports Table */}
+            <ReportsTable
+              campaignId={campaignId}
+              campaignName={campaign.name || campaign.job_role || "Campaign"}
+              jobRole={campaign.job_role || "Position"}
+            />
           </div>
         </div>
       </div>

@@ -32,8 +32,14 @@ import { useAuth } from "@/context/auth-context";
 export default function MigrationsPage() {
   const router = useRouter();
   const { showLoading, hideLoading } = useLoading();
-  const { user } = useAuth();
-  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const { user, getAccessToken } = useAuth();
+  const [authToken, setAuthToken] = useState<string | undefined>(() => {
+    // Get token from localStorage immediately on initial render
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem("callbot_access_token") || undefined;
+    }
+    return undefined;
+  });
   const [hyrexToken, setHyrexToken] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
@@ -60,7 +66,7 @@ export default function MigrationsPage() {
     (LegacyCampaign | Campaign)[]
   >([]);
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "active" | "draft" | "deleted"
+    "all" | "active" | "paused" | "completed" | "draft" | "deleted"
   >("all");
   const [showDeletedSection, setShowDeletedSection] = useState(false);
 
@@ -69,7 +75,10 @@ export default function MigrationsPage() {
     loading,
     error,
     fetchCampaigns,
-  } = useCampaigns(authToken, user);
+  } = useCampaigns(
+    authToken,
+    user ? { id: user.id, role: user.role || "viewer" } : undefined
+  );
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState("");
@@ -224,16 +233,24 @@ export default function MigrationsPage() {
       "Campaigns:",
       campaigns
     );
-    let filtered: (LegacyCampaign | Campaign)[] = [];
+
+    // Convert all campaigns to the new format first
+    const convertedCampaigns = campaigns.map(convertLegacyCampaign);
+
+    let filtered: Campaign[] = [];
     if (statusFilter === "active") {
-      filtered = campaigns.filter((c) => c.status === "active");
+      filtered = convertedCampaigns.filter((c) => c.status === "active");
+    } else if (statusFilter === "paused") {
+      filtered = convertedCampaigns.filter((c) => c.status === "paused");
+    } else if (statusFilter === "completed") {
+      filtered = convertedCampaigns.filter((c) => c.status === "completed");
     } else if (statusFilter === "draft") {
-      filtered = campaigns.filter((c) => c.status === "draft");
+      filtered = convertedCampaigns.filter((c) => c.status === "draft");
     } else if (statusFilter === "deleted") {
-      filtered = deletedCampaigns;
+      filtered = deletedCampaigns.map(convertLegacyCampaign);
     } else {
       // "all" filter
-      filtered = [...campaigns];
+      filtered = convertedCampaigns;
     }
 
     console.log("[MigrationsPage] Filtered campaigns:", filtered);
@@ -550,6 +567,8 @@ export default function MigrationsPage() {
   };
 
   const activeCount = campaigns.filter((c) => c.status === "active").length;
+  const pausedCount = campaigns.filter((c) => c.status === "inactive").length; // "inactive" maps to "paused"
+  const completedCount = 0; // Legacy campaigns don't have completed status
   const draftCount = campaigns.filter((c) => c.status === "draft").length;
   const deletedCount = deletedCampaigns.length;
 
@@ -644,6 +663,32 @@ export default function MigrationsPage() {
           Active{" "}
           <span className="ml-1 text-gray-500">
             {activeCount.toString().padStart(2, "0")}
+          </span>
+        </button>
+        <button
+          onClick={() => setStatusFilter("paused")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            statusFilter === "paused"
+              ? "text-yellow-600 border-yellow-600"
+              : "text-gray-600 border-transparent hover:text-gray-900"
+          }`}
+        >
+          Paused{" "}
+          <span className="ml-1 text-gray-500">
+            {pausedCount.toString().padStart(2, "0")}
+          </span>
+        </button>
+        <button
+          onClick={() => setStatusFilter("completed")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            statusFilter === "completed"
+              ? "text-blue-600 border-blue-600"
+              : "text-gray-600 border-transparent hover:text-gray-900"
+          }`}
+        >
+          Completed{" "}
+          <span className="ml-1 text-gray-500">
+            {completedCount.toString().padStart(2, "0")}
           </span>
         </button>
         <button
