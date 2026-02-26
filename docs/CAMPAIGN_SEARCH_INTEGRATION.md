@@ -170,7 +170,7 @@ The search API requires:
 Make sure your auth token is stored in localStorage:
 
 ```typescript
-localStorage.getItem("auth-token");
+localStorage.getItem("callbot_access_token");
 ```
 
 ## 🎨 UI Components

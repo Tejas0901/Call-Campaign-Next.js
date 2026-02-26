@@ -12,7 +12,6 @@ import {
   MousePointerClick,
   ShoppingCart,
 } from "lucide-react";
-import { campaignData } from "@/data/campaignData";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,15 +20,18 @@ import Topbar from "@/components/Topbar";
 import CandidatesTable, {
   CandidateRow,
 } from "@/components/ui/candidates-table";
+import ReportsTable from "@/components/campaigns/ReportsTable";
+import { useAuth } from "@/context/auth-context";
 
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
   const campaignId = params.id as string; // Keep as string for UUID support
 
+  const { user, getAccessToken } = useAuth();
   const [campaign, setCampaign] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const [authToken, setAuthToken] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [candidates, setCandidates] = useState<CandidateRow[]>([
     {
@@ -136,46 +138,20 @@ export default function CampaignDetailPage() {
 
   // Get auth token on mount
   useEffect(() => {
-    try {
-      const stored =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("auth-token")
-          : null;
-      if (stored) {
-        setAuthToken(stored);
-      }
-    } catch (e) {
-      console.error("[CampaignDetailPage] Error reading auth token:", e);
+    const token = getAccessToken();
+    if (token) {
+      setAuthToken(token);
     }
-  }, []);
+  }, [getAccessToken]);
 
-  // Fetch campaign data from API or fallback to static data
+  // Fetch campaign data from API
   useEffect(() => {
     const fetchCampaign = async () => {
-      // First, try to find in static data by numeric ID
-      const numericId = parseInt(campaignId);
-      if (!isNaN(numericId)) {
-        const foundCampaign = campaignData.campaigns.find(
-          (camp: any) => camp.id === numericId,
-        );
-        if (foundCampaign) {
-          console.log(
-            "[CampaignDetailPage] Found in static data:",
-            foundCampaign,
-          );
-          setCampaign(foundCampaign);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // For UUID campaigns, wait for auth token before trying API
       if (!authToken) {
         console.log("[CampaignDetailPage] Waiting for auth token...");
         return;
       }
 
-      // Try API with auth token
       try {
         setLoading(true);
         const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
@@ -205,7 +181,7 @@ export default function CampaignDetailPage() {
         console.log(
           "[CampaignDetailPage] Response status:",
           response.status,
-          response.statusText,
+          response.statusText
         );
 
         // Check content-type but try parsing anyway
@@ -219,12 +195,12 @@ export default function CampaignDetailPage() {
           responseData = responseText ? JSON.parse(responseText) : {};
           console.log(
             "[CampaignDetailPage] Parsed API response:",
-            responseData,
+            responseData
           );
         } catch (parseError) {
           console.error(
             "[CampaignDetailPage] Failed to parse JSON:",
-            parseError,
+            parseError
           );
           setCampaign(null);
           setLoading(false);
@@ -236,18 +212,39 @@ export default function CampaignDetailPage() {
           const fetchedCampaign = responseData.data || responseData;
           console.log(
             "[CampaignDetailPage] Extracted campaign:",
-            fetchedCampaign,
+            fetchedCampaign
           );
-          setCampaign(fetchedCampaign);
+
+          // Check if user has permission to access this campaign
+          // For recruiters, they should only access campaigns they own
+          if (
+            user?.role === "recruiter" &&
+            fetchedCampaign.created_by !== user.id
+          ) {
+            console.error(
+              "[CampaignDetailPage] Recruiter attempting to access another user's campaign"
+            );
+            setCampaign(null);
+          } else {
+            setCampaign(fetchedCampaign);
+          }
         } else {
           console.error(
             "[CampaignDetailPage] API returned error status:",
-            response.status,
+            response.status
           );
           console.error(
             "[CampaignDetailPage] Error response data:",
-            responseData,
+            responseData
           );
+
+          // Handle unauthorized access (recruiter trying to access someone else's campaign)
+          if (response.status === 403 || response.status === 404) {
+            console.error(
+              "[CampaignDetailPage] Unauthorized or campaign not found"
+            );
+          }
+
           setCampaign(null);
         }
       } catch (error) {
@@ -258,8 +255,10 @@ export default function CampaignDetailPage() {
       }
     };
 
-    fetchCampaign();
-  }, [campaignId, authToken]);
+    if (authToken) {
+      fetchCampaign();
+    }
+  }, [campaignId, authToken, user]);
 
   if (loading) {
     return (
@@ -458,6 +457,13 @@ export default function CampaignDetailPage() {
                 />
               </div>
             </div>
+
+            {/* Reports Table */}
+            <ReportsTable
+              campaignId={campaignId}
+              campaignName={campaign.name || campaign.job_role || "Campaign"}
+              jobRole={campaign.job_role || "Position"}
+            />
           </div>
         </div>
       </div>

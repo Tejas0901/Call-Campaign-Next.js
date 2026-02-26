@@ -5,6 +5,9 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 // GET /api/templates - Fetch all templates
 export async function GET(request: NextRequest) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const tenantId = request.headers.get("tenant-id");
+
     if (!API_BASE_URL) {
       return NextResponse.json(
         { error: "API base URL not configured" },
@@ -12,8 +15,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/templates`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/templates`, {
       headers: {
+        "tenant-id": tenantId || "",
+        "Content-Type": "application/json",
+        Authorization: authHeader || "",
         "ngrok-skip-browser-warning": "true",
       },
     });
@@ -40,6 +46,9 @@ export async function GET(request: NextRequest) {
 // POST /api/templates - Create a new template
 export async function POST(request: NextRequest) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const tenantId = request.headers.get("tenant-id");
+
     if (!API_BASE_URL) {
       console.error("API_BASE_URL is not configured");
       return NextResponse.json(
@@ -50,12 +59,14 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     console.log("Creating template with payload:", JSON.stringify(body, null, 2));
-    console.log("Sending to:", `${API_BASE_URL}/api/templates`);
+    console.log("Sending to:", `${API_BASE_URL}/api/v1/templates`);
 
-    const response = await fetch(`${API_BASE_URL}/api/templates`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/templates`, {
       method: "POST",
       headers: {
+        "tenant-id": tenantId || "",
         "Content-Type": "application/json",
+        Authorization: authHeader || "",
         "ngrok-skip-browser-warning": "true",
       },
       body: JSON.stringify(body),

@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 import MigrationCard from "@/components/MigrationCard";
 import CreateCampaignModal from "@/components/CreateCampaignModal";
 import { HyrexLoginDialog } from "@/components/hyrex/HyrexLoginDialog";
-import { ChevronDown, ArrowLeft, Search, Plus } from "lucide-react";
-import { useCampaigns } from "@/hooks/useCampaigns";
+import { ChevronDown, Search, Plus } from "lucide-react";
+import { useCampaigns, LegacyCampaign } from "@/hooks/useCampaigns";
+import { useLoading } from "@/context/loading-context";
 import { useCampaignSearch } from "@/hooks/useCampaignSearch";
 import { Campaign, CampaignSearchFilters } from "@/types/campaign";
 import { CampaignFilters } from "@/components/campaigns/CampaignFilters";
@@ -24,20 +25,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useAuth } from "@/context/auth-context";
 
-// Legacy campaign type from useCampaigns
-interface LegacyCampaign {
-  id: string;
-  job_role: string;
-  status: "draft" | "active" | "inactive";
-  created_at: string;
-  is_deleted?: boolean;
-  deleted_at?: string;
-}
+// Legacy campaign type is now imported from useCampaigns hook
 
 export default function MigrationsPage() {
   const router = useRouter();
-  const [authToken, setAuthToken] = useState<string | undefined>(undefined);
+  const { showLoading, hideLoading } = useLoading();
+  const { user, getAccessToken } = useAuth();
+  const [authToken, setAuthToken] = useState<string | undefined>(() => {
+    // Get token from localStorage immediately on initial render
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem("callbot_access_token") || undefined;
+    }
+    return undefined;
+  });
   const [hyrexToken, setHyrexToken] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showLoginDialog, setShowLoginDialog] = useState(false);
@@ -64,7 +66,7 @@ export default function MigrationsPage() {
     (LegacyCampaign | Campaign)[]
   >([]);
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "active" | "draft" | "deleted"
+    "all" | "active" | "paused" | "completed" | "draft" | "deleted"
   >("all");
   const [showDeletedSection, setShowDeletedSection] = useState(false);
 
@@ -73,7 +75,10 @@ export default function MigrationsPage() {
     loading,
     error,
     fetchCampaigns,
-  } = useCampaigns(authToken);
+  } = useCampaigns(
+    authToken,
+    user ? { id: user.id, role: user.role || "viewer" } : undefined
+  );
 
   // Search functionality
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,7 +101,7 @@ export default function MigrationsPage() {
     try {
       const stored =
         typeof window !== "undefined"
-          ? window.localStorage.getItem("auth-token")
+          ? window.localStorage.getItem("callbot_access_token")
           : null;
       if (stored) {
         setAuthToken(stored);
@@ -110,8 +115,14 @@ export default function MigrationsPage() {
   // Fetch campaigns when token is available
   useEffect(() => {
     if (authToken && !loading) {
-      fetchCampaigns();
-      fetchDeletedCampaigns();
+      showLoading();
+      Promise.all([fetchCampaigns(), fetchDeletedCampaigns()])
+        .then(() => {
+          hideLoading();
+        })
+        .catch(() => {
+          hideLoading();
+        });
     }
   }, [authToken]);
 
@@ -156,12 +167,17 @@ export default function MigrationsPage() {
 
   // Update campaigns when fetched
   useEffect(() => {
+    console.log(
+      "[MigrationsPage] Fetched campaigns updated:",
+      fetchedCampaigns
+    );
     setCampaigns(fetchedCampaigns);
   }, [fetchedCampaigns]);
 
   // Convert legacy campaign to full campaign format for display
   const convertLegacyCampaign = (legacy: LegacyCampaign): Campaign => {
-    return {
+    console.log("[MigrationsPage] Converting legacy campaign:", legacy);
+    const converted = {
       id: legacy.id,
       tenant_id: "", // Not available in legacy format
       name: legacy.job_role, // Use job_role as name
@@ -169,14 +185,14 @@ export default function MigrationsPage() {
       job_id: 0, // Not available in legacy format
       job_code: "",
       job_role: legacy.job_role,
-      job_type: "fulltime", // Default value
+      job_type: "fulltime" as const, // Default value
       hiring_company_name: "", // Not available in legacy format
       client_name: null,
       job_location: "", // Not available in legacy format
       job_locations: [],
-      work_mode: "remote", // Default value
-      shift_type: "day", // Default value
-      interview_mode: "video", // Default value
+      work_mode: "remote" as const, // Default value
+      shift_type: "day" as const, // Default value
+      interview_mode: "video" as const, // Default value
       is_drive: false, // Default value
       drive_date: null,
       drive_location: null,
@@ -186,14 +202,18 @@ export default function MigrationsPage() {
       min_ctc: 0, // Default value
       max_ctc: 0, // Default value
       ctc_negotiable: false, // Default value
-      status: legacy.status as "draft" | "active" | "completed",
+      status: (legacy.status === "inactive"
+        ? "paused"
+        : legacy.status === "active"
+        ? "active"
+        : "draft") as "draft" | "active" | "paused" | "completed",
       total_contacts: 0, // Default value
       completed_calls: 0, // Default value
       failed_calls: 0, // Default value
       pending_calls: 0, // Default value
       audio_generated: false, // Default value
       audio_approved: false, // Default value
-      voice_gender: "female", // Default value
+      voice_gender: "female" as const, // Default value
       is_deleted: !!legacy.is_deleted,
       deleted_at: legacy.deleted_at || null,
       created_at: legacy.created_at,
@@ -201,19 +221,39 @@ export default function MigrationsPage() {
       started_at: null,
       completed_at: null,
     };
+    console.log("[MigrationsPage] Converted to:", converted);
+    return converted;
   };
 
   // Filter campaigns based on status
   useEffect(() => {
-    let filtered: (LegacyCampaign | Campaign)[] = [];
+    console.log(
+      "[MigrationsPage] Filtering campaigns. Status filter:",
+      statusFilter,
+      "Campaigns:",
+      campaigns
+    );
+
+    // Convert all campaigns to the new format first
+    const convertedCampaigns = campaigns.map(convertLegacyCampaign);
+
+    let filtered: Campaign[] = [];
     if (statusFilter === "active") {
-      filtered = campaigns.filter((c) => c.status === "active");
+      filtered = convertedCampaigns.filter((c) => c.status === "active");
+    } else if (statusFilter === "paused") {
+      filtered = convertedCampaigns.filter((c) => c.status === "paused");
+    } else if (statusFilter === "completed") {
+      filtered = convertedCampaigns.filter((c) => c.status === "completed");
     } else if (statusFilter === "draft") {
-      filtered = campaigns.filter((c) => c.status === "draft");
+      filtered = convertedCampaigns.filter((c) => c.status === "draft");
     } else if (statusFilter === "deleted") {
-      filtered = deletedCampaigns;
+      filtered = deletedCampaigns.map(convertLegacyCampaign);
+    } else {
+      // "all" filter
+      filtered = convertedCampaigns;
     }
 
+    console.log("[MigrationsPage] Filtered campaigns:", filtered);
     setFilteredCampaigns(filtered);
   }, [campaigns, deletedCampaigns, statusFilter]);
 
@@ -222,11 +262,18 @@ export default function MigrationsPage() {
     if (!authToken || !useSearch) return;
 
     const timeoutId = setTimeout(() => {
+      showLoading();
       const filters = { ...searchFilters };
       if (searchQuery) {
         filters.q = searchQuery;
       }
-      searchCampaigns(filters);
+      searchCampaigns(filters)
+        .then(() => {
+          hideLoading();
+        })
+        .catch(() => {
+          hideLoading();
+        });
     }, 300);
 
     return () => clearTimeout(timeoutId);
@@ -234,15 +281,29 @@ export default function MigrationsPage() {
 
   // Determine which campaigns to display
   const displayCampaigns = useMemo(() => {
+    console.log(
+      "[MigrationsPage] Computing displayCampaigns. useSearch:",
+      useSearch,
+      "filteredCampaigns:",
+      filteredCampaigns
+    );
     if (useSearch) {
+      console.log("[MigrationsPage] Using search results:", searchedCampaigns);
       return searchedCampaigns;
     }
     // When not using search, convert legacy campaigns to full format
-    return filteredCampaigns.map((c) =>
-      (c as LegacyCampaign).job_role
-        ? convertLegacyCampaign(c as LegacyCampaign)
-        : (c as Campaign)
-    );
+    const converted = filteredCampaigns.map((c) => {
+      // Check if it's a legacy campaign (has job_role property)
+      if ((c as LegacyCampaign).job_role !== undefined) {
+        console.log("[MigrationsPage] Converting legacy campaign:", c);
+        return convertLegacyCampaign(c as LegacyCampaign);
+      }
+      // Otherwise it's already a full Campaign object
+      console.log("[MigrationsPage] Using existing campaign:", c);
+      return c as Campaign;
+    });
+    console.log("[MigrationsPage] Converted display campaigns:", converted);
+    return converted;
   }, [useSearch, searchedCampaigns, filteredCampaigns]);
 
   const isLoading = useSearch ? searchLoading : loading;
@@ -250,12 +311,19 @@ export default function MigrationsPage() {
 
   const handleApplyFilters = () => {
     if (authToken) {
+      showLoading();
       setUseSearch(true);
       const filters = { ...searchFilters };
       if (searchQuery) {
         filters.q = searchQuery;
       }
-      searchCampaigns(filters);
+      searchCampaigns(filters)
+        .then(() => {
+          hideLoading();
+        })
+        .catch(() => {
+          hideLoading();
+        });
     }
   };
 
@@ -294,20 +362,35 @@ export default function MigrationsPage() {
     setIsModalOpen(false);
     // Refresh campaigns after creation
     if (authToken) {
-      fetchCampaigns();
+      showLoading();
+      fetchCampaigns()
+        .then(() => {
+          hideLoading();
+        })
+        .catch(() => {
+          hideLoading();
+        });
     }
   };
 
   const handlePageChange = (newPage: number) => {
-    setSearchFilters({ ...searchFilters, page: newPage });
     if (useSearch && authToken) {
-      searchCampaigns({ ...searchFilters, page: newPage });
+      showLoading();
+      setSearchFilters({ ...searchFilters, page: newPage });
+      searchCampaigns({ ...searchFilters, page: newPage })
+        .then(() => {
+          hideLoading();
+        })
+        .catch(() => {
+          hideLoading();
+        });
     }
   };
 
   const deleteCampaign = async (id: string) => {
     setDeletingCampaigns((prev) => new Set(prev).add(id));
     try {
+      showLoading();
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
       const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
 
@@ -344,12 +427,14 @@ export default function MigrationsPage() {
         next.delete(id);
         return next;
       });
+      hideLoading();
     }
   };
 
   const restoreCampaign = async (id: string) => {
     setRestoringCampaigns((prev) => new Set(prev).add(id));
     try {
+      showLoading();
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
       const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
 
@@ -387,6 +472,7 @@ export default function MigrationsPage() {
         next.delete(id);
         return next;
       });
+      hideLoading();
     }
   };
 
@@ -403,6 +489,7 @@ export default function MigrationsPage() {
   const permanentlyDeleteCampaign = async (id: string) => {
     setPermanentlyDeletingCampaigns((prev) => new Set(prev).add(id));
     try {
+      showLoading();
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
       const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
 
@@ -475,12 +562,40 @@ export default function MigrationsPage() {
         next.delete(id);
         return next;
       });
+      hideLoading();
     }
   };
 
   const activeCount = campaigns.filter((c) => c.status === "active").length;
+  const pausedCount = campaigns.filter((c) => c.status === "inactive").length; // "inactive" maps to "paused"
+  const completedCount = 0; // Legacy campaigns don't have completed status
   const draftCount = campaigns.filter((c) => c.status === "draft").length;
   const deletedCount = deletedCampaigns.length;
+
+  // Debug logging
+  useEffect(() => {
+    console.log("[MigrationsPage] State debug:", {
+      campaigns: campaigns.length,
+      filteredCampaigns: filteredCampaigns.length,
+      displayCampaigns: displayCampaigns.length,
+      useSearch,
+      statusFilter,
+      loading,
+      searchLoading,
+      error,
+      searchError,
+    });
+  }, [
+    campaigns,
+    filteredCampaigns,
+    displayCampaigns,
+    useSearch,
+    statusFilter,
+    loading,
+    searchLoading,
+    error,
+    searchError,
+  ]);
 
   return (
     <MainLayout>
@@ -495,13 +610,6 @@ export default function MigrationsPage() {
           >
             <Plus className="w-5 h-5" />
             Create Campaign
-          </button>
-          <button
-            onClick={() => router.push("/campaigns")}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Campaigns
           </button>
         </div>
       </div>
@@ -555,6 +663,32 @@ export default function MigrationsPage() {
           Active{" "}
           <span className="ml-1 text-gray-500">
             {activeCount.toString().padStart(2, "0")}
+          </span>
+        </button>
+        <button
+          onClick={() => setStatusFilter("paused")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            statusFilter === "paused"
+              ? "text-yellow-600 border-yellow-600"
+              : "text-gray-600 border-transparent hover:text-gray-900"
+          }`}
+        >
+          Paused{" "}
+          <span className="ml-1 text-gray-500">
+            {pausedCount.toString().padStart(2, "0")}
+          </span>
+        </button>
+        <button
+          onClick={() => setStatusFilter("completed")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            statusFilter === "completed"
+              ? "text-blue-600 border-blue-600"
+              : "text-gray-600 border-transparent hover:text-gray-900"
+          }`}
+        >
+          Completed{" "}
+          <span className="ml-1 text-gray-500">
+            {completedCount.toString().padStart(2, "0")}
           </span>
         </button>
         <button

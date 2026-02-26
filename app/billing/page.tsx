@@ -3,6 +3,9 @@
 import { useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import MainLayout from "@/components/layouts/MainLayout";
+import BalanceWidget from "@/components/billing/BalanceWidget";
+import TransactionHistory from "@/components/billing/TransactionHistory";
+import UsageRecords from "@/components/billing/UsageRecords";
 import {
   CreditCard,
   FileText,
@@ -12,7 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-type TabType = "overview" | "payment" | "history" | "credits" | "preferences";
+type TabType = "overview" | "payment" | "history" | "usage" | "preferences";
 
 export default function BillingPage() {
   const [activeTab, setActiveTab] = useState<TabType>("overview");
@@ -21,7 +24,7 @@ export default function BillingPage() {
     { id: "overview", label: "Overview" },
     { id: "payment", label: "Payment methods" },
     { id: "history", label: "Billing history" },
-    { id: "credits", label: "Credit grants" },
+    { id: "usage", label: "Usage" },
     { id: "preferences", label: "Preferences" },
   ];
 
@@ -52,41 +55,7 @@ export default function BillingPage() {
         {/* Content Sections */}
         {activeTab === "overview" && (
           <div className="space-y-8">
-            {/* Free Trial Section */}
-            <div className="bg-white rounded-lg border border-gray-200 p-8">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-6">
-                Free trial
-              </h2>
-
-              <div className="mb-8">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium text-gray-600">
-                    Credit remaining
-                  </span>
-                  <AlertCircle className="w-4 h-4 text-gray-400" />
-                </div>
-                <div className="text-5xl font-bold text-gray-900 mb-6">
-                  $0.00
-                </div>
-                <div className="flex gap-3">
-                  <button className="px-6 py-2 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">
-                    Add payment details
-                  </button>
-                  <button className="px-6 py-2 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">
-                    View usage
-                  </button>
-                </div>
-              </div>
-
-              {/* Note Box */}
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex gap-3">
-                <AlertCircle className="w-5 h-5 text-gray-600 mt-0.5 shrink-0" />
-                <p className="text-sm text-gray-700">
-                  Note: This does not reflect the status of your ChatGPT
-                  account.
-                </p>
-              </div>
-            </div>
+            <BalanceWidget />
 
             {/* Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -184,26 +153,14 @@ export default function BillingPage() {
         )}
 
         {activeTab === "history" && (
-          <div className="bg-white rounded-lg border border-gray-200 p-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
-              Billing history
-            </h2>
-            <div className="text-center py-12">
-              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">No billing history available</p>
-            </div>
+          <div className="space-y-8">
+            <TransactionHistory />
           </div>
         )}
 
-        {activeTab === "credits" && (
-          <div className="bg-white rounded-lg border border-gray-200 p-8">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-6">
-              Credit grants
-            </h2>
-            <div className="text-center py-12">
-              <DollarSign className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-600">No credits available</p>
-            </div>
+        {activeTab === "usage" && (
+          <div className="space-y-8">
+            <UsageRecords />
           </div>
         )}
 
