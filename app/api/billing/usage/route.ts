@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID;
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,28 +16,20 @@ export async function GET(request: NextRequest) {
     // Get the authorization header from the request
     const authHeader = request.headers.get('authorization');
     
-    // If no auth header, return mock data for development
+    // If no auth header, return error
     if (!authHeader) {
-      // Return mock usage data for development without backend
       return NextResponse.json({
-        success: true,
-        data: {
-          usage: [
-            {
-              id: 'a1b2c3d4-0000-0000-0000-000000000001',
-              call_sid: 'SF123456789',
-              campaign_id: 'c9d8e7f6-0000-0000-0000-000000000001',
-              session_id: 'b2c3d4e5-0000-0000-0000-000000000001',
-              duration_seconds: 95,
-              billable_minutes: 2,
-              rate_per_minute: 2.0,
-              amount_charged: 4.0,
-              created_at: '2026-02-22T08:34:12.000Z'
-            }
-          ],
-          count: 1
-        }
-      });
+        success: false,
+        detail: 'Authorization header required'
+      }, { status: 401 });
+    }
+    
+    // If no tenant ID, return error
+    if (!TENANT_ID) {
+      return NextResponse.json({
+        success: false,
+        detail: 'Tenant ID not configured'
+      }, { status: 500 });
     }
     
     // Construct the backend API URL with query parameters
@@ -59,43 +52,31 @@ export async function GET(request: NextRequest) {
       headers: {
         'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': '69420',
-        ...(authHeader ? { 'Authorization': authHeader } : {})
+        'Authorization': authHeader,
+        'tenant-id': TENANT_ID
       }
     });
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || errorData.error || 'Failed to fetch usage');
+      return NextResponse.json({
+        success: false,
+        detail: errorData.detail || errorData.error || 'Failed to fetch usage'
+      }, { status: response.status });
     }
     
     const data = await response.json();
     
-    return NextResponse.json({
-      success: true,
-      data: data
-    });
+    // The backend returns { success: true, data: { usage: [], count: n } }
+    // Extract and return just the inner data
+    return NextResponse.json(data.data);
   } catch (error: any) {
     console.error('Error fetching usage:', error);
     
-    // Return mock data for development
+    // Return error response instead of mock data
     return NextResponse.json({
-      success: true,
-      data: {
-        usage: [
-          {
-            id: 'a1b2c3d4-0000-0000-0000-000000000001',
-            call_sid: 'SF123456789',
-            campaign_id: 'c9d8e7f6-0000-0000-0000-000000000001',
-            session_id: 'b2c3d4e5-0000-0000-0000-000000000001',
-            duration_seconds: 95,
-            billable_minutes: 2,
-            rate_per_minute: 2.0,
-            amount_charged: 4.0,
-            created_at: '2026-02-22T08:34:12.000Z'
-          }
-        ],
-        count: 1
-      }
-    });
+      success: false,
+      detail: error.message || 'Failed to fetch usage records'
+    }, { status: 500 });
   }
 }
