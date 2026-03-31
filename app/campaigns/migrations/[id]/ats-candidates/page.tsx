@@ -135,14 +135,8 @@ export default function MigrationAtsCandidatesPage() {
     pageOverride?: number
   ) =>
     candidate?.id?.toString() ||
-    candidate?.submission_id?.toString() ||
-    candidate?.candidate_id?.toString() ||
-    `${
-      candidate?.candidate_email ||
-      candidate?.candidate_mobile ||
-      candidate?.candidate_name ||
-      "candidate"
-    }-${candidate?.job_code || "job"}-${(pageOverride ?? atsPage) - 1}-${idx}`;
+    candidate?.candidate?.toString() ||
+    `${candidate?.candidate_name || "candidate"}-${(pageOverride ?? atsPage) - 1}-${idx}`;
 
   const fetchAtsCandidates = async (
     jobId: number,
@@ -208,7 +202,7 @@ export default function MigrationAtsCandidatesPage() {
 
     // Basic validation: phone number is required by the API
     const missingPhone = selected.filter(
-      (candidate) => !candidate.candidate_mobile
+      (candidate) => !candidate.candidate_details?.mobile
     );
     if (missingPhone.length > 0) {
       setImportLoading(false);
@@ -219,35 +213,34 @@ export default function MigrationAtsCandidatesPage() {
     }
 
     try {
-      // Prepare contacts data in the format expected by the API
-      const contactsPayload = selected.map((candidate) => ({
-        candidate_name:
-          candidate.candidate_name ||
-          candidate.candidate_email ||
-          candidate.candidate_mobile ||
-          "Unknown Candidate",
-        phone_number: candidate.candidate_mobile || "",
-        email: candidate.candidate_email || "",
-        ats_candidate_id:
-          candidate.candidate_id || candidate.submission_id || "",
-        // Optional enrichment fields if available from ATS
-        ...(candidate.experience_years && {
-          experience_years: candidate.experience_years,
-        }),
-        ...(candidate.current_ctc && { current_ctc: candidate.current_ctc }),
-        ...(candidate.expected_ctc && { expected_ctc: candidate.expected_ctc }),
-        ...(candidate.notice_period_days && {
-          notice_period_days: candidate.notice_period_days,
-        }),
-        // Pack any remaining useful context so backend can choose to store it
-        candidate_context: {
-          job_code: candidate.job_code || campaign?.job_code || "",
-          job_title: candidate.job_title || campaign?.job_role || "",
-          location: candidate.candidate_location || "",
-          submitted_by: candidate.submitted_by_name || "",
-          submission_date: candidate.submission_on || new Date().toISOString(),
-        },
-      }));
+      // Prepare contacts data from tag-candidates response format
+      const contactsPayload = selected.map((candidate) => {
+        const details = candidate.candidate_details || {};
+        return {
+          candidate_name:
+            candidate.candidate_name ||
+            details.fullname ||
+            "Unknown Candidate",
+          phone_number: details.mobile || "",
+          email: details.email || "",
+          ats_candidate_id: candidate.candidate || "",
+          ...(details.experience && {
+            experience_years: details.experience,
+          }),
+          ...(details.notice_period && {
+            notice_period_days: details.notice_period,
+          }),
+          candidate_context: {
+            job_code: campaign?.job_code || "",
+            job_title: candidate.job_title || campaign?.job_role || "",
+            location: [details.city, details.state, details.country]
+              .filter(Boolean)
+              .join(", "),
+            submitted_by: candidate.tagged_by_name || "",
+            submission_date: candidate.tagged_on || new Date().toISOString(),
+          },
+        };
+      });
 
       const apiBaseUrl =
         process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -450,7 +443,7 @@ export default function MigrationAtsCandidatesPage() {
                     value={atsSearch}
                     onChange={setAtsSearch}
                     onClear={() => setAtsSearch("")}
-                    placeholder="Search candidates by name, email, mobile, job code, or location"
+                    placeholder="Search candidates by name, mobile, job, or submitted by"
                     containerClassName="w-full"
                   />
                   {atsSearch && (
@@ -474,22 +467,19 @@ export default function MigrationAtsCandidatesPage() {
                         Date
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
-                        Candidate
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
-                        ATS Candidate ID
+                        Full Name
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
                         Mobile
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
-                        Location
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
                         Job
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
                         Submitted By
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                        Candidate ID
                       </th>
                     </tr>
                   </thead>
@@ -498,13 +488,13 @@ export default function MigrationAtsCandidatesPage() {
                       .filter((candidate) => {
                         if (!atsSearch.trim()) return true;
                         const q = atsSearch.toLowerCase();
+                        const details = candidate.candidate_details || {};
                         const fields = [
                           candidate.candidate_name,
-                          candidate.candidate_email,
-                          candidate.candidate_mobile,
-                          candidate.candidate_location,
-                          candidate.job_code,
+                          details.mobile,
                           candidate.job_title,
+                          candidate.tagged_by_name,
+                          candidate.candidate,
                         ]
                           .filter(Boolean)
                           .map((v: string) => v.toLowerCase());
@@ -516,6 +506,7 @@ export default function MigrationAtsCandidatesPage() {
                         const key = getCandidateKey(candidate, idx);
                         const isSelected =
                           selectAllPages || selectedCandidates.has(key);
+                        const details = candidate.candidate_details || {};
                         return (
                           <tr
                             key={key}
@@ -545,9 +536,9 @@ export default function MigrationAtsCandidatesPage() {
                               />
                             </td>
                             <td className="px-4 py-3 text-gray-700 whitespace-nowrap text-xs">
-                              {candidate.submission_on
+                              {candidate.tagged_on
                                 ? new Date(
-                                    candidate.submission_on
+                                    candidate.tagged_on
                                   ).toLocaleDateString("en-US", {
                                     month: "short",
                                     day: "numeric",
@@ -557,53 +548,38 @@ export default function MigrationAtsCandidatesPage() {
                             </td>
                             <td className="px-4 py-3">
                               <div className="font-medium text-gray-900">
-                                {candidate.candidate_name || "—"}
+                                {candidate.candidate_name || details.fullname || "—"}
                               </div>
-                              {candidate.candidate_email && (
+                              {details.email && (
                                 <div className="text-xs text-gray-500 mt-0.5">
-                                  {candidate.candidate_email}
+                                  {details.email}
                                 </div>
                               )}
                             </td>
+                            <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
+                              {details.mobile || "—"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-gray-900 text-xs">
+                                {candidate.job_title || "—"}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-gray-700 text-xs">
+                                {candidate.tagged_by_name || "—"}
+                              </div>
+                            </td>
                             <td className="px-4 py-3 text-gray-700 text-xs font-mono">
-                              {candidate.candidate_id ? (
+                              {candidate.candidate ? (
                                 <span
-                                  title={candidate.candidate_id}
-                                  className="truncate max-w-xs block"
+                                  title={candidate.candidate}
+                                  className="truncate max-w-30 block"
                                 >
-                                  {candidate.candidate_id}
+                                  {candidate.candidate.substring(0, 8)}...
                                 </span>
                               ) : (
                                 "—"
                               )}
-                            </td>
-                            <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                              {candidate.candidate_mobile || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 text-xs">
-                              {candidate.candidate_location || "—"}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="font-medium text-gray-900 text-xs">
-                                {candidate.job_code || "—"}
-                              </div>
-                              {candidate.job_title && (
-                                <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
-                                  {candidate.job_title}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="text-gray-700 text-xs">
-                                {candidate.submitted_by_name || "—"}
-                              </div>
-                              {candidate.updated_by_name &&
-                                candidate.updated_by_name !==
-                                  candidate.submitted_by_name && (
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    Updated: {candidate.updated_by_name}
-                                  </div>
-                                )}
                             </td>
                           </tr>
                         );
