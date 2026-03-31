@@ -736,11 +736,42 @@ export default function CampaignsPage() {
       )}
 
       {isLoading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
-            <p className="text-gray-600 text-sm">Loading campaigns...</p>
-          </div>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 animate-pulse"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gray-200 rounded-xl shrink-0" />
+                <div className="flex-1 min-w-0 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2 flex-1">
+                      <div className="h-5 bg-gray-200 rounded w-1/3" />
+                      <div className="h-3 bg-gray-100 rounded w-1/5" />
+                    </div>
+                    <div className="w-6 h-6 bg-gray-100 rounded" />
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="h-6 bg-gray-200 rounded-full w-16" />
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    {[1, 2].map((j) => (
+                      <div key={j} className="space-y-2">
+                        <div className="h-3 bg-gray-100 rounded w-16" />
+                        <div className="h-5 bg-gray-200 rounded w-24" />
+                        <div className="h-3 bg-gray-100 rounded w-14" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                    <div className="h-3 bg-gray-100 rounded w-32" />
+                    <div className="h-6 bg-gray-200 rounded-full w-16" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

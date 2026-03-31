@@ -292,7 +292,9 @@ export default function AddCandidatesWorkflow({
                   }
                   setShowAtsDialog(false);
                   router.push(
-                    `/campaigns/${routePrefix}/${entityId}/ats-candidates`,
+                    routePrefix === "drafts"
+                      ? `/campaigns/drafts/${entityId}/ats-candidates`
+                      : `/campaigns/${entityId}/ats-candidates`,
                   );
                 }}
                 disabled={!jobCode}
