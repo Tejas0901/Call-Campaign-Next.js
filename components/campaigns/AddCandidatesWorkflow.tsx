@@ -20,8 +20,8 @@ interface AddCandidatesWorkflowProps {
   jobCode?: string;
   candidates: CandidateRow[];
   setCandidates: React.Dispatch<React.SetStateAction<CandidateRow[]>>;
-  routePrefix: "drafts" | "migrations"; // For navigation paths
-  entityType?: "draft" | "migration"; // For dialog labels
+  routePrefix: "drafts" | "campaigns"; // For navigation paths
+  entityType?: "draft" | "campaign"; // For dialog labels
 }
 
 export default function AddCandidatesWorkflow({

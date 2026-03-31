@@ -15,7 +15,7 @@ export interface FetchAtsCandidatesResult {
   authFormatUsed: string;
 }
 
-// Shared ATS submissions fetcher used by draft and migration pages.
+// Shared ATS submissions fetcher used by draft and campaign pages.
 export async function fetchAtsCandidatesShared(
   params: FetchAtsCandidatesParams,
 ): Promise<FetchAtsCandidatesResult> {

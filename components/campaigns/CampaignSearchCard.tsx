@@ -100,7 +100,7 @@ export function CampaignSearchCard({
               onClick={() =>
                 onView
                   ? onView(campaign.id)
-                  : router.push(`/campaigns/migrations/${campaign.id}`)
+                  : router.push(`/campaigns/${campaign.id}`)
               }
             >
               <h3 className="text-lg font-semibold text-gray-900 mb-1 hover:text-primary-600 transition-colors">
@@ -130,7 +130,7 @@ export function CampaignSearchCard({
                     e.stopPropagation();
                     onView
                       ? onView(campaign.id)
-                      : router.push(`/campaigns/migrations/${campaign.id}`);
+                      : router.push(`/campaigns/${campaign.id}`);
                   }}
                   className="hover:bg-blue-50 hover:text-blue-700"
                 >
