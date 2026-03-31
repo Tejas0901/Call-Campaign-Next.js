@@ -263,10 +263,18 @@ export default function AddCandidatesWorkflow({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-gray-700">
-              We will fetch candidates using the saved job code for this{" "}
-              {entityLabel}.
-            </p>
+            {jobCode ? (
+              <p className="text-sm text-gray-700">
+                We will fetch candidates using the saved job code{" "}
+                <span className="font-medium">{jobCode}</span> for this{" "}
+                {entityLabel}.
+              </p>
+            ) : (
+              <p className="text-sm text-red-600">
+                No job code assigned to this {entityLabel}. Please assign a job
+                code before fetching candidates from ATS.
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <Button
                 type="button"

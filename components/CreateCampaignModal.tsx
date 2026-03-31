@@ -119,49 +119,122 @@ export default function CreateCampaignModal({
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
-  // Read token from localStorage if not provided as prop
-  const [tokenFromStorage, setTokenFromStorage] = useState<string | undefined>(
-    () => {
-      if (typeof window !== "undefined") {
-        const stored = window.localStorage.getItem("hyrex-auth-token");
-        if (stored) {
-          console.log(
-            "[CreateCampaignModal] Token loaded from localStorage on mount:",
-            !!stored
-          );
-          return stored;
-        }
-      }
-      return undefined;
-    }
-  );
-
-  useEffect(() => {
-    if (!authToken && !tokenFromStorage && typeof window !== "undefined") {
+  // Read Hyrex token from localStorage for job codes (not for campaign API)
+  const [hyrexTokenFromStorage, setHyrexTokenFromStorage] = useState<
+    string | undefined
+  >(() => {
+    if (typeof window !== "undefined") {
       const stored = window.localStorage.getItem("hyrex-auth-token");
       if (stored) {
-        setTokenFromStorage(stored);
         console.log(
-          "[CreateCampaignModal] Token read from localStorage:",
+          "[CreateCampaignModal] Hyrex token loaded from localStorage on mount:",
           !!stored
+        );
+        return stored;
+      }
+    }
+    return undefined;
+  });
+
+  // Read callbot access token for campaign API
+  const [callbotTokenFromStorage, setCallbotTokenFromStorage] = useState<
+    string | undefined
+  >(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("callbot_access_token");
+      if (stored) {
+        console.log(
+          "[CreateCampaignModal] Callbot token loaded from localStorage on mount:",
+          !!stored
+        );
+        return stored;
+      }
+    }
+    return undefined;
+  });
+
+  useEffect(() => {
+    if (
+      !hyrexTokenFromStorage &&
+      !callbotTokenFromStorage &&
+      typeof window !== "undefined"
+    ) {
+      const hyrexStored = window.localStorage.getItem("hyrex-auth-token");
+      const callbotStored = window.localStorage.getItem("callbot_access_token");
+      if (hyrexStored) {
+        setHyrexTokenFromStorage(hyrexStored);
+        console.log(
+          "[CreateCampaignModal] Hyrex token read from localStorage:",
+          !!hyrexStored
+        );
+      }
+      if (callbotStored) {
+        setCallbotTokenFromStorage(callbotStored);
+        console.log(
+          "[CreateCampaignModal] Callbot token read from localStorage:",
+          !!callbotStored
         );
       }
     }
-  }, [authToken, tokenFromStorage, open]);
+  }, [hyrexTokenFromStorage, callbotTokenFromStorage, open]);
 
-  // Use prop token first, fallback to storage
-  const effectiveToken = authToken || tokenFromStorage;
+  // Use prop token first, fallback to storage for campaign API
+  const effectiveToken = authToken || callbotTokenFromStorage;
+  // Use hyrex token for job codes
+  const effectiveHyrexToken = hyrexTokenFromStorage;
+
+  // Validate token format - check if it's the old Django-style token
+  const isValidTokenFormat = (token: string | undefined): boolean => {
+    if (!token) return false;
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) {
+        console.log(
+          "[TokenValidation] Invalid JWT structure, parts:",
+          parts.length
+        );
+        return false;
+      }
+      const payload = JSON.parse(atob(parts[1]));
+      console.log("[TokenValidation] Payload:", payload);
+      console.log("[TokenValidation] Keys:", Object.keys(payload));
+      // Check if it has the expected fields from our backend
+      const hasSub = payload.sub !== undefined;
+      const hasTenantId = payload.tenant_id !== undefined;
+      const hasUserId = payload.user_id !== undefined;
+      console.log("[TokenValidation] Has sub:", hasSub);
+      console.log("[TokenValidation] Has tenant_id:", hasTenantId);
+      console.log("[TokenValidation] Has user_id (old format):", hasUserId);
+      return hasSub || hasTenantId;
+    } catch (e) {
+      console.error("[TokenValidation] Error decoding token:", e);
+      return false;
+    }
+  };
+
+  const tokenIsValidFormat = isValidTokenFormat(effectiveToken);
   console.log(
-    "[CreateCampaignModal] Effective authToken:",
+    "[CreateCampaignModal] Effective authToken (campaign):",
     !!effectiveToken,
+    "Valid format:",
+    tokenIsValidFormat,
     effectiveToken ? `${effectiveToken.substring(0, 30)}...` : "undefined"
+  );
+  console.log(
+    "[CreateCampaignModal] Effective Hyrex token (job codes):",
+    !!effectiveHyrexToken,
+    effectiveHyrexToken
+      ? `${effectiveHyrexToken.substring(0, 30)}...`
+      : "undefined"
   );
 
   const {
     jobs,
     loading: jobsLoading,
+    error: jobsError,
+    fetchAttempted,
     fetchJobCodes,
-  } = useJobCodes(effectiveToken);
+  } = useJobCodes(effectiveHyrexToken);
 
   // Convert jobs to combobox options
   const jobCodeOptions: ComboboxOption[] = jobs.map((job) => ({
@@ -227,12 +300,12 @@ export default function CreateCampaignModal({
     }
   }, [jobCode, jobs]);
 
-  // Fetch job codes when modal opens
+  // Fetch job codes when modal opens - only attempt ONCE, do not retry on failure
   useEffect(() => {
-    if (open && jobs.length === 0 && !jobsLoading) {
+    if (open && jobs.length === 0 && !jobsLoading && !fetchAttempted) {
       fetchJobCodes();
     }
-  }, [open, jobs.length, jobsLoading]);
+  }, [open, jobs.length, jobsLoading, fetchAttempted]);
 
   // Candidate import/migration and uploads state
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -548,13 +621,6 @@ export default function CreateCampaignModal({
       return;
     }
 
-    // Validate that job code is selected (required for ATS import)
-    if (!jobCode || jobCode.trim() === "") {
-      setError(
-        "Please select a job code from Hyrex. This is required to import candidates from ATS."
-      );
-      return;
-    }
     if (minExpNum < 0 || maxExpNum < 0 || minCTCNum < 0 || maxCTCNum < 0) {
       setError("Values cannot be negative.");
       return;
@@ -568,6 +634,16 @@ export default function CreateCampaignModal({
       console.error(
         "Missing NEXT_PUBLIC_API_BASE_URL or NEXT_PUBLIC_TENANT_ID"
       );
+    }
+
+    // Check if token format is valid before submitting
+    if (effectiveToken && !tokenIsValidFormat) {
+      setError("Invalid authentication token. Please log in again.");
+      // Clear invalid tokens
+      localStorage.removeItem("callbot_access_token");
+      localStorage.removeItem("callbot_refresh_token");
+      localStorage.removeItem("callbot_user");
+      return;
     }
 
     setSubmitting(true);
@@ -586,11 +662,27 @@ export default function CreateCampaignModal({
       const selectedJob = jobs.find((j) => j.job_code === jobCode);
       const finalJobId = jobId || selectedJob?.id;
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/campaigns`, {
+      // Campaign API requires token in both header and query parameter
+      const url = `${API_BASE_URL}/api/v1/campaigns${
+        effectiveToken ? `?token=${encodeURIComponent(effectiveToken)}` : ""
+      }`;
+
+      // Debug: Log token being used
+      console.log("[CreateCampaign] Submitting with token:", {
+        hasToken: !!effectiveToken,
+        tokenPrefix: effectiveToken
+          ? effectiveToken.substring(0, 50) + "..."
+          : "none",
+        tenantId: TENANT_ID,
+        url: url.substring(0, 100) + "...",
+      });
+
+      const response = await fetch(url, {
         method: "POST",
         headers: {
           "tenant-id": TENANT_ID || "",
           "Content-Type": "application/json",
+          Authorization: `Bearer ${effectiveToken}`,
         },
         body: JSON.stringify({
           // Basic Information
@@ -647,8 +739,17 @@ export default function CreateCampaignModal({
       });
 
       const result = await response.json();
+      console.log("[CreateCampaign] API response:", {
+        status: response.status,
+        result,
+      });
       if (!response.ok || !result?.success) {
-        throw new Error(result?.error?.message || "Failed to create campaign");
+        const errorMessage =
+          result?.error?.message ||
+          result?.detail ||
+          result?.message ||
+          `Failed to create campaign (HTTP ${response.status})`;
+        throw new Error(errorMessage);
       }
 
       // If this was from a draft, remove it
@@ -711,6 +812,32 @@ export default function CreateCampaignModal({
             onSubmit={handleSubmit}
             className="space-y-8 mt-4 overflow-y-auto flex-1 pr-4"
           >
+            {/* Token format warning */}
+            {effectiveToken && !tokenIsValidFormat && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-4">
+                <p className="text-sm text-red-800">
+                  <strong>Authentication Error:</strong> Invalid token format
+                  detected. Please{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Clear all invalid tokens and redirect
+                      localStorage.removeItem("callbot_access_token");
+                      localStorage.removeItem("callbot_refresh_token");
+                      localStorage.removeItem("callbot_user");
+                      localStorage.removeItem("accessToken");
+                      localStorage.removeItem("refreshToken");
+                      window.location.href = "/auth/login";
+                    }}
+                    className="underline font-semibold"
+                  >
+                    clear session and log in again
+                  </button>{" "}
+                  to continue.
+                </p>
+              </div>
+            )}
+
             {/* Basic Information Section */}
             <div>
               <h3 className="text-sm font-semibold text-gray-900 mb-4">
@@ -790,26 +917,24 @@ export default function CreateCampaignModal({
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="companyName">Hiring Company Name *</Label>
+                  <Label htmlFor="companyName">Hiring Company Name</Label>
                   <Input
                     id="companyName"
                     type="text"
                     placeholder="e.g., Tech Corp Inc"
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
-                    required
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="clientName">Client Name *</Label>
+                  <Label htmlFor="clientName">Client Name</Label>
                   <Input
                     id="clientName"
                     type="text"
                     placeholder="e.g., Cognizant Client"
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
-                    required
                   />
                 </div>
               </div>
@@ -822,7 +947,7 @@ export default function CreateCampaignModal({
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Job Type *</Label>
+                  <Label>Job Type</Label>
                   <Select value={jobType} onValueChange={setJobType}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select job type" />
@@ -880,7 +1005,7 @@ export default function CreateCampaignModal({
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Minimum CTC (in lakhs) *</Label>
+                  <Label>Minimum CTC (in lakhs)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -892,7 +1017,7 @@ export default function CreateCampaignModal({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Maximum CTC (in lakhs) *</Label>
+                  <Label>Maximum CTC (in lakhs)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1105,7 +1230,7 @@ export default function CreateCampaignModal({
               </Button>
               <Button
                 type="submit"
-                disabled={!jobCode || !jobRole || submitting}
+                disabled={!campaignName || !jobRole || submitting}
               >
                 {submitting ? "Creating..." : "Create Campaign"}
               </Button>

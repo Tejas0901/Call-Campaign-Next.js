@@ -26,6 +26,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/context/auth-context";
+import authService from "@/lib/authService";
 
 // Legacy campaign type is now imported from useCampaigns hook
 
@@ -96,7 +97,7 @@ export default function MigrationsPage() {
     searchCampaigns,
   } = useCampaignSearch(authToken);
 
-  // Get auth token on mount
+  // Get auth token on mount and when user changes (after login)
   useEffect(() => {
     try {
       const stored =
@@ -106,11 +107,14 @@ export default function MigrationsPage() {
       if (stored) {
         setAuthToken(stored);
         console.log("[MigrationsPage] Auth token loaded from localStorage");
+      } else {
+        setAuthToken(undefined);
+        console.log("[MigrationsPage] No auth token found");
       }
     } catch (e) {
       console.error("[MigrationsPage] Error reading auth token:", e);
     }
-  }, []);
+  }, [user]);
 
   // Fetch campaigns when token is available
   useEffect(() => {
@@ -338,16 +342,21 @@ export default function MigrationsPage() {
   };
 
   const handleCreateCampaign = () => {
-    // Check if user has Hyrex token
+    // Check if user has valid Hyrex token
     const storedHyrexToken =
       typeof window !== "undefined"
         ? window.localStorage.getItem("hyrex-auth-token")
         : null;
 
-    if (storedHyrexToken) {
+    if (storedHyrexToken && authService.isTokenValid(storedHyrexToken)) {
       setHyrexToken(storedHyrexToken);
       setIsModalOpen(true);
     } else {
+      // Token is missing or expired - clear it and show login dialog
+      if (storedHyrexToken) {
+        window.localStorage.removeItem("hyrex-auth-token");
+        window.localStorage.removeItem("hyrex-refresh-token");
+      }
       setShowLoginDialog(true);
     }
   };
@@ -812,7 +821,7 @@ export default function MigrationsPage() {
       <CreateCampaignModal
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
-        authToken={hyrexToken || undefined}
+        authToken={authToken}
         onCreated={handleCampaignCreated}
       />
 

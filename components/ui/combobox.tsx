@@ -66,7 +66,7 @@ export function Combobox({
   }, [options, searchValue]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -85,7 +85,11 @@ export function Combobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-100 p-0" align="start">
+      <PopoverContent
+        className="w-100 p-0"
+        align="start"
+        onWheel={(e) => e.stopPropagation()}
+      >
         <Command shouldFilter={false}>
           <CommandInput
             placeholder={searchPlaceholder}
