@@ -522,17 +522,60 @@ export default function CampaignDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl font-semibold">Loading...</div>
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar isOpen={true} />
+        <div className="flex-1 flex flex-col">
+          <Topbar onMenuClick={() => {}} />
+          <div className="flex-1 p-4 md:p-8">
+            <div className="max-w-7xl mx-auto animate-pulse">
+              <div className="h-8 w-32 bg-gray-200 rounded mb-6" />
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+                <div className="flex items-start gap-5">
+                  <div className="w-14 h-14 bg-gray-200 rounded-xl shrink-0" />
+                  <div className="flex-1 space-y-3">
+                    <div className="h-7 bg-gray-200 rounded w-1/3" />
+                    <div className="h-4 bg-gray-100 rounded w-1/4" />
+                    <div className="flex gap-2 mt-2">
+                      <div className="h-6 bg-gray-200 rounded-full w-20" />
+                      <div className="h-6 bg-gray-100 rounded-full w-24" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+                    <div className="h-4 bg-gray-100 rounded w-20" />
+                    <div className="h-8 bg-gray-200 rounded w-16" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!campaign) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl font-semibold text-red-500">
-          Campaign not found
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar isOpen={true} />
+        <div className="flex-1 flex flex-col">
+          <Topbar onMenuClick={() => {}} />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Briefcase className="w-8 h-8 text-gray-400" />
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Campaign not found</h2>
+              <p className="text-gray-500 mb-6">The campaign you're looking for doesn't exist or has been removed.</p>
+              <Button onClick={() => router.push("/campaigns")} className="gap-2">
+                <ArrowLeft className="w-4 h-4" />
+                Back to Campaigns
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -1641,6 +1684,12 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const campaignName = campaign.name || campaign.job_role || "Campaign Details";
+  const jobCode = campaign.job_code || campaign.jobCode || "";
+  const createdDate = campaign.created_at
+    ? new Date(campaign.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : null;
+
   return (
     <>
       <div className="flex min-h-screen bg-gray-50">
@@ -1650,83 +1699,91 @@ export default function CampaignDetailPage() {
           <div className="flex-1 p-4 md:p-8">
             <div className="max-w-7xl mx-auto">
               {/* Back Button */}
-              <div className="mb-6">
-                <Button
-                  variant="outline"
-                  size="sm"
+              <div className="mb-5">
+                <button
                   onClick={() => router.push("/campaigns")}
-                  className="gap-2"
+                  className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" />
-                  Back to Campaigns
-                </Button>
+                  Campaigns
+                </button>
               </div>
 
-              {/* Header */}
-              <div className="mb-8">
-                <div className="flex flex-col sm:flex-row items-start justify-between gap-4 mb-4">
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`w-14 h-14 ${
-                        campaign.iconBg || "bg-primary-100"
-                      } rounded-xl flex items-center justify-center`}
-                    >
-                      {campaign.icon ? (
-                        getIconComponent(campaign.icon)
-                      ) : (
-                        <Mail className="w-5 h-5 text-white" />
-                      )}
-                    </div>
-                    <div>
-                      <h1 className="text-3xl font-bold text-gray-900">
-                        {campaign.name ||
-                          campaign.job_role ||
-                          "Campaign Details"}
-                      </h1>
-                      <div className="flex items-center gap-3 mt-2">
-                        <span
-                          className={`px-3 py-1 text-sm font-medium rounded-full flex items-center gap-1 ${statusClass.container}`}
-                        >
-                          <span
-                            className={`w-2 h-2 rounded-full ${statusClass.dot}`}
-                          ></span>
-                          {displayStatus}
-                        </span>
-                        <span className="text-gray-600">
-                          {campaign.messagesCount || 0} messages
-                        </span>
-                        <span className="text-gray-600">
-                          {campaign.actionsCount || 0} actions
-                        </span>
+              {/* Hero Header Card */}
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6 overflow-hidden">
+                {/* Top accent bar */}
+                <div className={`h-1 ${displayStatus === "Running" ? "bg-green-500" : displayStatus === "Paused" ? "bg-amber-500" : "bg-gray-300"}`} />
+
+                <div className="p-6">
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                    {/* Left: Campaign info */}
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                        displayStatus === "Running" ? "bg-green-100" : displayStatus === "Paused" ? "bg-amber-100" : "bg-gray-100"
+                      }`}>
+                        <Briefcase className={`w-5 h-5 ${
+                          displayStatus === "Running" ? "text-green-600" : displayStatus === "Paused" ? "text-amber-600" : "text-gray-500"
+                        }`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <h1 className="text-2xl font-bold text-gray-900 truncate">{campaignName}</h1>
+                          <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full inline-flex items-center gap-1.5 ${statusClass.container}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusClass.dot}`} />
+                            {displayStatus}
+                          </span>
+                        </div>
+                        {campaign.description && (
+                          <p className="text-sm text-gray-500 mt-1 line-clamp-2 max-w-xl">{campaign.description}</p>
+                        )}
+                        <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
+                          {jobCode && (
+                            <span className="inline-flex items-center gap-1.5 bg-gray-100 px-2.5 py-1 rounded-md font-mono">
+                              {jobCode}
+                            </span>
+                          )}
+                          {createdDate && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5" />
+                              Created {createdDate}
+                            </span>
+                          )}
+                          {(campaign.total_contacts > 0 || pagination?.total > 0) && (
+                            <span className="inline-flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5" />
+                              {pagination?.total || campaign.total_contacts} contacts
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <AddCandidatesWorkflow
-                      entityId={campaignId}
-                      jobId={jobId}
-                      jobCode={campaign?.job_code || campaign?.jobCode}
-                      candidates={candidates}
-                      setCandidates={setCandidates}
-                      routePrefix="campaigns"
-                      entityType="campaign"
-                    />
-                    <Button
-                      onClick={() => setShowScriptsDialog(true)}
-                      variant="outline"
-                      size="sm"
-                      className="gap-2"
-                    >
-                      <Music className="w-4 h-4" />
-                      Campaign Scripts
-                    </Button>
-                    <div className="flex gap-2">
+
+                    {/* Right: Action buttons - horizontal layout */}
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      <AddCandidatesWorkflow
+                        entityId={campaignId}
+                        jobId={jobId}
+                        jobCode={campaign?.job_code || campaign?.jobCode}
+                        candidates={candidates}
+                        setCandidates={setCandidates}
+                        routePrefix="campaigns"
+                        entityType="campaign"
+                      />
+                      <Button
+                        onClick={() => setShowScriptsDialog(true)}
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <Music className="w-4 h-4" />
+                        Scripts
+                      </Button>
                       {displayStatus === "Running" ? (
                         <Button
                           onClick={() => setShowDeactivateDialog(true)}
                           variant="outline"
                           size="sm"
-                          className="gap-2 flex-1"
+                          className="gap-2"
                         >
                           <PowerOff className="w-4 h-4" />
                           Deactivate
@@ -1736,7 +1793,7 @@ export default function CampaignDetailPage() {
                           onClick={() => setShowActivateDialog(true)}
                           variant="outline"
                           size="sm"
-                          className="gap-2 flex-1"
+                          className="gap-2"
                         >
                           <Power className="w-4 h-4" />
                           Activate
@@ -1746,12 +1803,16 @@ export default function CampaignDetailPage() {
                         onClick={() => setShowDeleteDialog(true)}
                         variant="outline"
                         size="sm"
-                        className="gap-2 flex-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                        className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                       >
                         <Trash2 className="w-4 h-4" />
-                        Delete
                       </Button>
                     </div>
+                  </div>
+
+                  {/* Dialer controls strip */}
+                  <div className="mt-5 pt-5 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Dialer</span>
                     <Button
                       onClick={handleActivateAndStartDialer}
                       disabled={dialerActivating || dialerStarting}
@@ -1760,311 +1821,192 @@ export default function CampaignDetailPage() {
                     >
                       {dialerActivating || dialerStarting ? (
                         <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          {dialerActivating
-                            ? "Activating..."
-                            : "Starting Dialer..."}
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          {dialerActivating ? "Activating..." : "Starting..."}
                         </>
                       ) : (
                         <>
-                          <Play className="w-4 h-4" />
-                          Start Dialer
+                          <Play className="w-3.5 h-3.5" />
+                          Start
                         </>
                       )}
                     </Button>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={handlePauseDialer}
-                        disabled={
-                          dialerPausing || dialerActivating || dialerStarting
-                        }
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                      >
-                        {dialerPausing ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Pausing...
-                          </>
-                        ) : (
-                          <>
-                            <Pause className="w-4 h-4" />
-                            Pause Dialer
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={handleResumeDialer}
-                        disabled={
-                          dialerResuming || dialerActivating || dialerStarting
-                        }
-                        size="sm"
-                        variant="outline"
-                        className="gap-2"
-                      >
-                        {dialerResuming ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Resuming...
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-4 h-4" />
-                            Resume Dialer
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        onClick={handleStopDialer}
-                        disabled={
-                          dialerStopping || dialerActivating || dialerStarting
-                        }
-                        size="sm"
-                        variant="destructive"
-                        className="gap-2"
-                      >
-                        {dialerStopping ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Stopping...
-                          </>
-                        ) : (
-                          <>
-                            <Square className="w-4 h-4" />
-                            Stop Dialer
-                          </>
-                        )}
-                      </Button>
-                    </div>
+                    <Button
+                      onClick={handlePauseDialer}
+                      disabled={dialerPausing || dialerActivating || dialerStarting}
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      {dialerPausing ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Pausing...</>
+                      ) : (
+                        <><Pause className="w-3.5 h-3.5" /> Pause</>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleResumeDialer}
+                      disabled={dialerResuming || dialerActivating || dialerStarting}
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      {dialerResuming ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resuming...</>
+                      ) : (
+                        <><Play className="w-3.5 h-3.5" /> Resume</>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={handleStopDialer}
+                      disabled={dialerStopping || dialerActivating || dialerStarting}
+                      size="sm"
+                      variant="outline"
+                      className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                    >
+                      {dialerStopping ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Stopping...</>
+                      ) : (
+                        <><Square className="w-3.5 h-3.5" /> Stop</>
+                      )}
+                    </Button>
                   </div>
                 </div>
-                <p className="text-gray-600 max-w-2xl">
-                  {campaign.description || "No description available"}
-                </p>
               </div>
 
               {/* Tags */}
               {campaign.tags && campaign.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-8">
+                <div className="flex flex-wrap gap-2 mb-6">
                   {campaign.tags.map((tag: string, index: number) => (
-                    <Badge
-                      key={index}
-                      variant="secondary"
-                      className="px-3 py-1"
-                    >
-                      {tag}
-                    </Badge>
+                    <Badge key={index} variant="secondary" className="px-3 py-1">{tag}</Badge>
                   ))}
                 </div>
               )}
 
               {/* Analytics Cards - Only visible when campaign is NOT in draft mode */}
               {campaign?.status !== "draft" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                  {/* Total Calls Card */}
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        Total Calls
-                      </CardTitle>
-                      <Phone className="w-4 h-4 text-gray-500" />
-                    </CardHeader>
-                    <CardContent>
-                      {analyticsLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                  {/* Total Calls */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm font-medium text-gray-500">Total Calls</span>
+                      <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+                        <Phone className="w-4 h-4 text-blue-600" />
+                      </div>
+                    </div>
+                    {analyticsLoading ? (
+                      <div className="space-y-2 animate-pulse">
+                        <div className="h-8 bg-gray-100 rounded w-16" />
+                        <div className="h-3 bg-gray-100 rounded w-24" />
+                      </div>
+                    ) : analyticsData?.volume ? (
+                      <>
+                        <p className="text-3xl font-bold text-gray-900">{analyticsData.volume.total_calls_attempted ?? 0}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                          <span><span className="font-semibold text-green-600">{analyticsData.volume.total_calls_answered ?? 0}</span> answered</span>
+                          <span><span className="font-semibold text-gray-700">{analyticsData.volume.total_calls_completed ?? 0}</span> completed</span>
                         </div>
-                      ) : analyticsData?.volume ? (
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Attempted
-                            </span>
-                            <span className="text-sm font-semibold">
-                              {analyticsData.volume.total_calls_attempted ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Answered
-                            </span>
-                            <span className="text-sm font-semibold">
-                              {analyticsData.volume.total_calls_answered ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Completed
-                            </span>
-                            <span className="text-sm font-semibold">
-                              {analyticsData.volume.total_calls_completed ?? 0}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500">No data</p>
-                      )}
-                    </CardContent>
-                  </Card>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400">No data</p>
+                    )}
+                  </div>
 
-                  {/* Outcomes Card */}
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        Outcomes
-                      </CardTitle>
-                      <CheckCircle2 className="w-4 h-4 text-gray-500" />
-                    </CardHeader>
-                    <CardContent>
-                      {analyticsLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  {/* Outcomes */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm font-medium text-gray-500">Outcomes</span>
+                      <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                      </div>
+                    </div>
+                    {analyticsLoading ? (
+                      <div className="space-y-2 animate-pulse">
+                        <div className="h-8 bg-gray-100 rounded w-16" />
+                        <div className="h-3 bg-gray-100 rounded w-24" />
+                      </div>
+                    ) : analyticsData?.outcomes ? (
+                      <>
+                        <p className="text-3xl font-bold text-gray-900">{analyticsData.outcomes.completed ?? 0}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                          <span><span className="font-semibold text-red-500">{analyticsData.outcomes.rejected ?? 0}</span> rejected</span>
+                          <span><span className="font-semibold text-blue-500">{analyticsData.outcomes.callback ?? 0}</span> callback</span>
+                          <span><span className="font-semibold text-gray-500">{analyticsData.outcomes.no_answer ?? 0}</span> no answer</span>
                         </div>
-                      ) : analyticsData?.outcomes ? (
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Completed
-                            </span>
-                            <span className="text-sm font-semibold text-green-600">
-                              {analyticsData.outcomes.completed ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Rejected
-                            </span>
-                            <span className="text-sm font-semibold text-red-600">
-                              {analyticsData.outcomes.rejected ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Callback
-                            </span>
-                            <span className="text-sm font-semibold text-blue-600">
-                              {analyticsData.outcomes.callback ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              No Answer
-                            </span>
-                            <span className="text-sm font-semibold text-gray-600">
-                              {analyticsData.outcomes.no_answer ?? 0}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500">No data</p>
-                      )}
-                    </CardContent>
-                  </Card>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400">No data</p>
+                    )}
+                  </div>
 
-                  {/* Recommendations Card */}
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        Recommendations
-                      </CardTitle>
-                      <AlertCircle className="w-4 h-4 text-gray-500" />
-                    </CardHeader>
-                    <CardContent>
-                      {analyticsLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  {/* Recommendations */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm font-medium text-gray-500">Recommendations</span>
+                      <div className="w-8 h-8 bg-purple-50 rounded-lg flex items-center justify-center">
+                        <UserCheck className="w-4 h-4 text-purple-600" />
+                      </div>
+                    </div>
+                    {analyticsLoading ? (
+                      <div className="space-y-2 animate-pulse">
+                        <div className="h-8 bg-gray-100 rounded w-16" />
+                        <div className="h-3 bg-gray-100 rounded w-24" />
+                      </div>
+                    ) : analyticsData?.recommendations ? (
+                      <>
+                        <p className="text-3xl font-bold text-gray-900">{analyticsData.recommendations.proceed ?? 0}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                          <span className="text-green-600 font-semibold">proceed</span>
+                          <span><span className="font-semibold text-amber-500">{analyticsData.recommendations.review ?? 0}</span> review</span>
+                          <span><span className="font-semibold text-red-500">{analyticsData.recommendations.reject ?? 0}</span> reject</span>
                         </div>
-                      ) : analyticsData?.recommendations ? (
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Proceed
-                            </span>
-                            <span className="text-sm font-semibold text-green-600">
-                              {analyticsData.recommendations.proceed ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Review
-                            </span>
-                            <span className="text-sm font-semibold text-yellow-600">
-                              {analyticsData.recommendations.review ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Reject
-                            </span>
-                            <span className="text-sm font-semibold text-red-600">
-                              {analyticsData.recommendations.reject ?? 0}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500">No data</p>
-                      )}
-                    </CardContent>
-                  </Card>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400">No data</p>
+                    )}
+                  </div>
 
-                  {/* Quick Stats Card */}
-                  <Card>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium">
-                        Quick Stats
-                      </CardTitle>
-                      <Users className="w-4 h-4 text-gray-500" />
-                    </CardHeader>
-                    <CardContent>
-                      {analyticsLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                  {/* Quick Stats */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-sm font-medium text-gray-500">Quick Stats</span>
+                      <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+                        <Users className="w-4 h-4 text-amber-600" />
+                      </div>
+                    </div>
+                    {analyticsLoading ? (
+                      <div className="space-y-2 animate-pulse">
+                        <div className="h-8 bg-gray-100 rounded w-16" />
+                        <div className="h-3 bg-gray-100 rounded w-24" />
+                      </div>
+                    ) : analyticsData?.quick_stats ? (
+                      <>
+                        <p className="text-3xl font-bold text-gray-900">{analyticsData.quick_stats.immediate_joiners ?? 0}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                          <span>immediate joiners</span>
+                          <span><span className="font-semibold text-gray-700">{analyticsData.quick_stats.location_matches ?? 0}</span> location matches</span>
                         </div>
-                      ) : analyticsData?.quick_stats ? (
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Immediate Joiners
-                            </span>
-                            <span className="text-sm font-semibold">
-                              {analyticsData.quick_stats.immediate_joiners ?? 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-xs text-gray-500">
-                              Location Matches
-                            </span>
-                            <span className="text-sm font-semibold">
-                              {analyticsData.quick_stats.location_matches ?? 0}
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-gray-500">No data</p>
-                      )}
-                    </CardContent>
-                  </Card>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-400">No data</p>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Tables Container */}
-              <div className="mt-10 space-y-10">
+              <div className="space-y-8">
                 {/* Candidates Table - Only visible when campaign is in draft mode */}
                 {campaign?.status === "draft" && (
                   <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
                     <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                       <div>
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Candidates
-                        </h2>
-                        <p className="text-sm text-gray-600">
-                          Imported candidate data for this campaign
-                        </p>
+                        <h2 className="text-lg font-semibold text-gray-900">Candidates</h2>
+                        <p className="text-sm text-gray-500">Imported candidate data for this campaign</p>
                       </div>
-                      <span className="text-sm text-gray-500">
-                        {pagination?.total || 0} candidates found
-                      </span>
+                      <Badge variant="secondary" className="text-xs">
+                        {pagination?.total || 0} total
+                      </Badge>
                     </div>
                     <div className="p-6">
                       <div className="mb-4">
@@ -2091,22 +2033,22 @@ export default function CampaignDetailPage() {
                         )}
                       </div>
                       {candidatesLoading ? (
-                        <div className="flex items-center justify-center py-12">
-                          <div className="text-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-3"></div>
-                            <p className="text-gray-600 text-sm">
-                              Loading candidates...
-                            </p>
-                          </div>
+                        <div className="py-12 space-y-3">
+                          {[1, 2, 3].map((i) => (
+                            <div key={i} className="animate-pulse flex items-center gap-4 p-3 rounded-lg">
+                              <div className="w-10 h-10 bg-gray-200 rounded-full shrink-0" />
+                              <div className="flex-1 space-y-2">
+                                <div className="h-4 bg-gray-200 rounded w-1/4" />
+                                <div className="h-3 bg-gray-100 rounded w-1/3" />
+                              </div>
+                              <div className="h-4 bg-gray-100 rounded w-20" />
+                            </div>
+                          ))}
                         </div>
                       ) : candidatesError ? (
                         <div className="rounded-lg bg-red-50 border border-red-200 p-4">
-                          <p className="text-sm text-red-700 font-medium">
-                            Error
-                          </p>
-                          <p className="text-sm text-red-600 mt-1">
-                            {candidatesError}
-                          </p>
+                          <p className="text-sm text-red-700 font-medium">Error</p>
+                          <p className="text-sm text-red-600 mt-1">{candidatesError}</p>
                         </div>
                       ) : (
                         <>
@@ -2142,24 +2084,18 @@ export default function CampaignDetailPage() {
 
                                   {Array.from(
                                     {
-                                      length: Math.min(
-                                        5,
-                                        pagination.total_pages
-                                      ),
+                                      length: Math.min(5, pagination.total_pages),
                                     },
                                     (_, i) => {
-                                      // Show pages around current page
                                       let pageNum = pagination.page;
                                       if (pagination.total_pages <= 5) {
                                         pageNum = i + 1;
                                       } else if (pagination.page <= 3) {
                                         pageNum = i + 1;
                                       } else if (
-                                        pagination.page >=
-                                        pagination.total_pages - 2
+                                        pagination.page >= pagination.total_pages - 2
                                       ) {
-                                        pageNum =
-                                          pagination.total_pages - 4 + i;
+                                        pageNum = pagination.total_pages - 4 + i;
                                       } else {
                                         pageNum = pagination.page - 2 + i;
                                       }
@@ -2168,9 +2104,7 @@ export default function CampaignDetailPage() {
                                         <PaginationItem key={pageNum}>
                                           <PaginationLink
                                             href="#"
-                                            isActive={
-                                              pagination.page === pageNum
-                                            }
+                                            isActive={pagination.page === pageNum}
                                             onClick={(e) => {
                                               e.preventDefault();
                                               goToPage(pageNum);
@@ -2188,15 +2122,11 @@ export default function CampaignDetailPage() {
                                       href="#"
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        if (
-                                          pagination.page <
-                                          pagination.total_pages
-                                        )
+                                        if (pagination.page < pagination.total_pages)
                                           goToPage(pagination.page + 1);
                                       }}
                                       className={
-                                        pagination.page >=
-                                        pagination.total_pages
+                                        pagination.page >= pagination.total_pages
                                           ? "pointer-events-none opacity-50"
                                           : "cursor-pointer"
                                       }
@@ -2217,16 +2147,9 @@ export default function CampaignDetailPage() {
                   <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
                     <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                       <div>
-                        <h2 className="text-lg font-semibold text-gray-900">
-                          Reports Table
-                        </h2>
-                        <p className="text-sm text-gray-600">
-                          AI-powered call analysis and reports for this campaign
-                        </p>
+                        <h2 className="text-lg font-semibold text-gray-900">Call Reports</h2>
+                        <p className="text-sm text-gray-500">AI-powered call analysis and reports</p>
                       </div>
-                      <span className="text-sm text-gray-500">
-                        {campaign?.name || campaign?.job_role || "Campaign"}
-                      </span>
                     </div>
                     <div className="p-6">
                       <div className="mb-4">
@@ -2241,9 +2164,7 @@ export default function CampaignDetailPage() {
                       </div>
                       <ReportsTable
                         campaignId={campaignId}
-                        campaignName={
-                          campaign?.name || campaign?.job_role || "Campaign"
-                        }
+                        campaignName={campaign?.name || campaign?.job_role || "Campaign"}
                         jobRole={campaign?.job_role || "Position"}
                       />
                     </div>
