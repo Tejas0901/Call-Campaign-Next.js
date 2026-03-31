@@ -6,7 +6,17 @@
       "Bash(cp app/campaigns/migrations/page.tsx app/campaigns/page.tsx)",
       "Bash(cp app/campaigns/migrations/[id]/page.tsx app/campaigns/[id]/page.tsx)",
       "Bash(cp app/campaigns/migrations/[id]/ats-candidates/page.tsx app/campaigns/[id]/ats-candidates/page.tsx)",
-      "Bash(cp components/MigrationCard.tsx components/CampaignCard.tsx)"
+      "Bash(cp components/MigrationCard.tsx components/CampaignCard.tsx)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(npm ls:*)",
+      "WebFetch(domain:backup-gcl-global.statenweb.com)",
+      "Bash(npm install:*)",
+      "Bash(npx next:*)",
+      "Bash(npm dedupe:*)",
+      "Bash(echo $NODE_ENV)"
     ]
   }
 }

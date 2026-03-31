@@ -7,8 +7,6 @@ import {
   BarChart3,
   Megaphone,
   Settings,
-  Radio,
-  MessageSquare,
   Users,
   Building2,
   Target,
@@ -24,8 +22,6 @@ const menuItems = [
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
   { icon: Megaphone, label: "Campaigns", href: "/campaigns" },
   { icon: FileText, label: "Templates", href: "/templates" },
-  { icon: MessageSquare, label: "Transactional", href: "#" },
-  { icon: ClipboardList, label: "Deliveries & Drafts", href: "#" },
 ];
 
 const secondaryMenuItems = [
