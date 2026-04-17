@@ -1,243 +1,277 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { Mail, MessageSquare, Clock, MoreVertical } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  MoreVertical,
+  Clock,
+  CheckCircle,
+  Calendar,
+  Briefcase,
+  RotateCcw,
+  Trash,
+} from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
-interface Campaign {
-  id: number;
-  name: string;
-  description: string;
-  icon: string;
-  iconBg: string;
-  tags: string[];
-  metrics: {
-    delivered: number;
-    deliveredPeriod: string;
-    opened: number;
-    openedPeriod: string;
-    clicked: number;
-    clickedPeriod: string;
-    converted: number;
-    convertedPeriod: string;
-  };
-  status: string;
-  messagesCount: number;
-  actionsCount: number;
+import { Campaign } from "@/types/campaign";
+
+interface CampaignCardProps {
+  campaign: Campaign;
+  onView?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  isDeleted?: boolean;
+  onRestore?: (id: string) => void;
+  isRestoring?: boolean;
+  onPermanentDelete?: (id: string) => void;
+  isPermanentDeleting?: boolean;
 }
 
-export default function CampaignCard({ campaign }: { campaign: Campaign }) {
-  const [status, setStatus] = useState<string>(campaign.status);
-  const [hydrated, setHydrated] = useState(false);
+export default function CampaignCard({
+  campaign,
+  onView,
+  onDelete,
+  isDeleted = false,
+  onRestore,
+  isRestoring = false,
+  onPermanentDelete,
+  isPermanentDeleting = false,
+}: CampaignCardProps) {
+  const router = useRouter();
 
-  useEffect(() => {
-    const savedStatus = localStorage.getItem(`campaign-${campaign.id}-status`);
-    if (savedStatus) {
-      setStatus(savedStatus);
-    }
-    setHydrated(true);
-  }, [campaign.id]);
-
-  useEffect(() => {
-    if (hydrated) {
-      localStorage.setItem(`campaign-${campaign.id}-status`, status);
-    }
-  }, [status, campaign.id, hydrated]);
-
-  const getIconComponent = (icon: string) => {
-    switch (icon) {
-      case "Mail":
-        return <Mail className="w-5 h-5 text-white" />;
-      case "MessageSquare":
-        return <MessageSquare className="w-5 h-5 text-white" />;
-      default:
-        return <Mail className="w-5 h-5 text-white" />;
-    }
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
-  const statusStyles: Record<string, { container: string; dot: string }> = {
-    Running: { container: "bg-green-50 text-green-700", dot: "bg-green-500" },
-    Closed: { container: "bg-red-50 text-red-700", dot: "bg-red-500" },
-    Paused: { container: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
-  const statusClass = statusStyles[status] || {
-    container: "bg-gray-50 text-gray-700",
-    dot: "bg-gray-500",
-  };
+  const statusConfig = {
+    draft: {
+      bgColor: "bg-amber-100",
+      textColor: "text-amber-700",
+      dotColor: "bg-amber-500",
+      label: "Draft",
+      icon: Clock,
+    },
+    active: {
+      bgColor: "bg-green-100",
+      textColor: "text-green-700",
+      dotColor: "bg-green-500",
+      label: "Active",
+      icon: CheckCircle,
+    },
+    archived: {
+      bgColor: "bg-gray-100",
+      textColor: "text-gray-700",
+      dotColor: "bg-gray-400",
+      label: "Archived",
+      icon: Clock,
+    },
+  } as const;
+
+  const fallbackConfig = {
+    bgColor: "bg-gray-100",
+    textColor: "text-gray-700",
+    dotColor: "bg-gray-400",
+    label: campaign.status || "Unknown",
+    icon: Clock,
+  } as const;
+
+  const config =
+    statusConfig[campaign.status as keyof typeof statusConfig] ||
+    fallbackConfig;
+  const StatusIcon = config?.icon || Clock;
 
   return (
-    <Link href={`/campaigns/${campaign.id}`} className="block">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer">
-        <div className="flex items-start gap-4">
-          <div
-            className={`w-12 h-12 ${campaign.iconBg} rounded-xl flex items-center justify-center shrink-0`}
-          >
-            {getIconComponent(campaign.icon)}
-          </div>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+      <div className="flex items-start gap-4">
+        <div
+          className={`w-12 h-12 ${config.bgColor} rounded-xl flex items-center justify-center shrink-0`}
+        >
+          <Briefcase className={`w-5 h-5 ${config.textColor}`} />
+        </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                  {campaign.name}
-                </h3>
-                <p className="text-sm text-gray-600">{campaign.description}</p>
-              </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreVertical className="w-5 h-5 text-gray-400" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-32">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between mb-2">
+            <div
+              className="flex-1 cursor-pointer"
+              onClick={() =>
+                onView
+                  ? onView(campaign.id)
+                  : router.push(`/campaigns/${campaign.id}`)
+              }
+            >
+              <h3 className="text-lg font-semibold text-gray-900 mb-1 hover:text-primary-600 transition-colors">
+                {campaign.job_role || "Untitled Campaign"}
+              </h3>
+              <p className="text-sm text-gray-600">
+                ID:{" "}
+                <span className="font-medium">{campaign.id.slice(0, 8)}</span>
+              </p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="p-1 hover:bg-gray-100 rounded transition-colors cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="w-5 h-5 text-gray-400" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                {!isDeleted && (
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
-                      setStatus("Running");
-                    }}
-                    className="hover:bg-green-50 hover:text-green-700"
-                  >
-                    Start
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStatus("Paused");
-                    }}
-                    className="hover:bg-amber-50 hover:text-amber-700"
-                  >
-                    Pause
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStatus("Running");
+                      onView
+                        ? onView(campaign.id)
+                        : router.push(`/campaigns/${campaign.id}`);
                     }}
                     className="hover:bg-blue-50 hover:text-blue-700"
                   >
-                    Resume
+                    View Details
                   </DropdownMenuItem>
+                )}
+                {isDeleted && onRestore && (
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
-                      setStatus("Closed");
+                      onRestore(campaign.id);
+                    }}
+                    className="hover:bg-green-50 hover:text-green-700"
+                    disabled={isRestoring}
+                  >
+                    {isRestoring ? "Restoring..." : "Restore"}
+                  </DropdownMenuItem>
+                )}
+                {isDeleted && onPermanentDelete && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPermanentDelete(campaign.id);
+                    }}
+                    className="hover:bg-red-50 hover:text-red-700"
+                    disabled={isPermanentDeleting}
+                  >
+                    {isPermanentDeleting ? "Deleting..." : "Permanent Delete"}
+                  </DropdownMenuItem>
+                )}
+                {!isDeleted && onDelete && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(campaign.id);
                     }}
                     className="hover:bg-red-50 hover:text-red-700"
                   >
-                    Stop
+                    Delete
                   </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            <span
+              className={`px-3 py-1 ${config.bgColor} ${config.textColor} text-xs font-medium rounded-full`}
+            >
+              {config.label}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className="w-4 h-4 text-gray-400" />
+                <span className="text-xs text-gray-500">Created</span>
+              </div>
+              <p className="text-lg font-semibold text-gray-900">
+                {formatDate(campaign.created_at)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                {formatTime(campaign.created_at)}
+              </p>
             </div>
 
-            <div className="flex flex-wrap gap-2 mb-4">
-              {campaign.tags.map((tag, index) => (
-                <span
-                  key={index}
-                  className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full"
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <StatusIcon className="w-4 h-4 text-gray-400" />
+                <span className="text-xs text-gray-500">Status</span>
+              </div>
+              <p className="text-lg font-semibold text-gray-900 capitalize">
+                {campaign.status}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Campaign {config.label}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+            <div className="text-sm text-gray-500">
+              {isDeleted && campaign.deleted_at
+                ? `Deleted ${formatDate(campaign.deleted_at)}`
+                : `Created ${formatDate(campaign.created_at)}`}
+            </div>
+            <div className="flex items-center gap-2">
+              {isDeleted && onRestore && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRestore(campaign.id);
+                  }}
+                  disabled={isRestoring}
+                  className="gap-1 text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
                 >
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  <span className="text-xs text-gray-500">Delivered</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {campaign.metrics.delivered}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {campaign.metrics.deliveredPeriod}
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  <span className="text-xs text-gray-500">Opened</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {campaign.metrics.opened}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {campaign.metrics.openedPeriod}
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  <span className="text-xs text-gray-500">Clicked</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {campaign.metrics.clicked}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {campaign.metrics.clickedPeriod}
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <span className="text-xs text-gray-500">Converted</span>
-                </div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {campaign.metrics.converted}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {campaign.metrics.convertedPeriod}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-600">
-                    {campaign.messagesCount < 10
-                      ? `0${campaign.messagesCount}`
-                      : campaign.messagesCount}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-400" />
-                  <span className="text-sm text-gray-600">
-                    {campaign.actionsCount < 10
-                      ? `0${campaign.actionsCount}`
-                      : campaign.actionsCount}
-                  </span>
-                </div>
-              </div>
-              {hydrated && (
-                <span
-                  className={`px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 ${statusClass.container}`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${statusClass.dot}`}
-                  ></span>
-                  {status}
-                </span>
+                  <RotateCcw className="w-3 h-3" />
+                  {isRestoring ? "Restoring..." : "Restore"}
+                </Button>
               )}
+              {isDeleted && onPermanentDelete && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPermanentDelete(campaign.id);
+                  }}
+                  disabled={isPermanentDeleting}
+                  className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                >
+                  <Trash className="w-3 h-3" />
+                  {isPermanentDeleting ? "Deleting..." : "Permanently Delete"}
+                </Button>
+              )}
+              <span
+                className={`px-3 py-1 text-xs font-medium rounded-full flex items-center gap-1 ${config.bgColor} ${config.textColor}`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${config.dotColor}`}
+                ></span>
+                {config.label}
+              </span>
             </div>
           </div>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }

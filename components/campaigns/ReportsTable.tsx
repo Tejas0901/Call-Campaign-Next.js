@@ -11,6 +11,8 @@ import {
   Search,
   Eye,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import tokenStorage from "@/lib/tokenStorage";
 
@@ -131,6 +133,8 @@ export default function ReportsTable({
   const [records, setRecords] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 10;
 
   // Fetch screening data from API
   useEffect(() => {
@@ -230,6 +234,15 @@ export default function ReportsTable({
     return matchesSearch;
   });
 
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  const totalPages = Math.ceil(filteredRecords.length / PAGE_SIZE);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const paginatedRecords = filteredRecords.slice(startIndex, startIndex + PAGE_SIZE);
+
   const handleViewReport = (record: CallRecord) => {
     // Open report in new tab using sessionId
     const reportUrl = `/reports/candidate/${record.sessionId || record.id}`;
@@ -255,6 +268,7 @@ export default function ReportsTable({
       )}
 
       {!loading && !error && (
+        <>
         <table className="w-full">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-200">
@@ -279,8 +293,8 @@ export default function ReportsTable({
             </tr>
           </thead>
           <tbody>
-            {filteredRecords.length > 0 ? (
-              filteredRecords.map((record, index) => (
+            {paginatedRecords.length > 0 ? (
+              paginatedRecords.map((record, index) => (
                 <tr
                   key={record.id}
                   className={`border-b border-gray-200 transition-colors ${
@@ -343,6 +357,64 @@ export default function ReportsTable({
             )}
           </tbody>
         </table>
+
+        {/* Pagination */}
+        {filteredRecords.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+            <p className="text-sm text-gray-600">
+              Showing {startIndex + 1}–{Math.min(startIndex + PAGE_SIZE, filteredRecords.length)} of {filteredRecords.length} results
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((page) => {
+                  if (page === 1 || page === totalPages) return true;
+                  if (Math.abs(page - currentPage) <= 1) return true;
+                  return false;
+                })
+                .reduce<(number | "ellipsis")[]>((acc, page, idx, arr) => {
+                  if (idx > 0 && page - (arr[idx - 1] as number) > 1) {
+                    acc.push("ellipsis");
+                  }
+                  acc.push(page);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === "ellipsis" ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-sm text-gray-400">...</span>
+                  ) : (
+                    <Button
+                      key={item}
+                      variant={currentPage === item ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(item)}
+                      className={`h-8 w-8 p-0 ${currentPage === item ? "bg-orange-500 hover:bg-orange-600 text-white" : ""}`}
+                    >
+                      {item}
+                    </Button>
+                  )
+                )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

@@ -83,14 +83,8 @@ export default function AtsCandidatesPage() {
     pageOverride?: number,
   ) =>
     candidate?.id?.toString() ||
-    candidate?.submission_id?.toString() ||
-    candidate?.candidate_id?.toString() ||
-    `${
-      candidate?.candidate_email ||
-      candidate?.candidate_mobile ||
-      candidate?.candidate_name ||
-      "candidate"
-    }-${candidate?.job_code || "job"}-${(pageOverride ?? atsPage) - 1}-${idx}`;
+    candidate?.candidate?.toString() ||
+    `${candidate?.candidate_name || "candidate"}-${(pageOverride ?? atsPage) - 1}-${idx}`;
 
   const fetchAtsCandidates = async (
     jobId: number,
@@ -303,7 +297,7 @@ export default function AtsCandidatesPage() {
                     type="search"
                     value={atsSearch}
                     onChange={(e) => setAtsSearch(e.target.value)}
-                    placeholder="Search candidates by name, email, mobile, job code, or location"
+                    placeholder="Search candidates by name, mobile, job, or submitted by"
                     className="w-full"
                   />
                   {atsSearch && (
@@ -327,19 +321,19 @@ export default function AtsCandidatesPage() {
                         Date
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
-                        Candidate
+                        Full Name
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
                         Mobile
-                      </th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
-                        Location
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
                         Job
                       </th>
                       <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
                         Submitted By
+                      </th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700 text-xs uppercase tracking-wider">
+                        Candidate ID
                       </th>
                     </tr>
                   </thead>
@@ -348,13 +342,13 @@ export default function AtsCandidatesPage() {
                       .filter((candidate) => {
                         if (!atsSearch.trim()) return true;
                         const q = atsSearch.toLowerCase();
+                        const details = candidate.candidate_details || {};
                         const fields = [
                           candidate.candidate_name,
-                          candidate.candidate_email,
-                          candidate.candidate_mobile,
-                          candidate.candidate_location,
-                          candidate.job_code,
+                          details.mobile,
                           candidate.job_title,
+                          candidate.tagged_by_name,
+                          candidate.candidate,
                         ]
                           .filter(Boolean)
                           .map((v: string) => v.toLowerCase());
@@ -366,6 +360,7 @@ export default function AtsCandidatesPage() {
                         const key = getCandidateKey(candidate, idx);
                         const isSelected =
                           selectAllPages || selectedCandidates.has(key);
+                        const details = candidate.candidate_details || {};
                         return (
                           <tr
                             key={key}
@@ -395,9 +390,9 @@ export default function AtsCandidatesPage() {
                               />
                             </td>
                             <td className="px-4 py-3 text-gray-700 whitespace-nowrap text-xs">
-                              {candidate.submission_on
+                              {candidate.tagged_on
                                 ? new Date(
-                                    candidate.submission_on,
+                                    candidate.tagged_on,
                                   ).toLocaleDateString("en-US", {
                                     month: "short",
                                     day: "numeric",
@@ -407,41 +402,38 @@ export default function AtsCandidatesPage() {
                             </td>
                             <td className="px-4 py-3">
                               <div className="font-medium text-gray-900">
-                                {candidate.candidate_name || "—"}
+                                {candidate.candidate_name || details.fullname || "—"}
                               </div>
-                              {candidate.candidate_email && (
+                              {details.email && (
                                 <div className="text-xs text-gray-500 mt-0.5">
-                                  {candidate.candidate_email}
+                                  {details.email}
                                 </div>
                               )}
                             </td>
                             <td className="px-4 py-3 text-gray-700 whitespace-nowrap">
-                              {candidate.candidate_mobile || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 text-xs">
-                              {candidate.candidate_location || "—"}
+                              {details.mobile || "—"}
                             </td>
                             <td className="px-4 py-3">
                               <div className="font-medium text-gray-900 text-xs">
-                                {candidate.job_code || "—"}
+                                {candidate.job_title || "—"}
                               </div>
-                              {candidate.job_title && (
-                                <div className="text-xs text-gray-500 mt-0.5 max-w-50 truncate">
-                                  {candidate.job_title}
-                                </div>
-                              )}
                             </td>
                             <td className="px-4 py-3">
                               <div className="text-gray-700 text-xs">
-                                {candidate.submitted_by_name || "—"}
+                                {candidate.tagged_by_name || "—"}
                               </div>
-                              {candidate.updated_by_name &&
-                                candidate.updated_by_name !==
-                                  candidate.submitted_by_name && (
-                                  <div className="text-xs text-gray-500 mt-0.5">
-                                    Updated: {candidate.updated_by_name}
-                                  </div>
-                                )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-700 text-xs font-mono">
+                              {candidate.candidate ? (
+                                <span
+                                  title={candidate.candidate}
+                                  className="truncate max-w-30 block"
+                                >
+                                  {candidate.candidate.substring(0, 8)}...
+                                </span>
+                              ) : (
+                                "—"
+                              )}
                             </td>
                           </tr>
                         );

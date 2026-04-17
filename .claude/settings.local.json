@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST http://3.147.50.143:8001/api/v1/auth/login -H \"Content-Type: application/json\" -d '{\"\"email\"\": \"\"admin@callengine.com\"\", \"\"password\"\": \"\"Admin@123\"\"}')",
+      "WebFetch(domain:api-v2.hyrexai.com)",
+      "Bash(cp app/campaigns/migrations/page.tsx app/campaigns/page.tsx)",
+      "Bash(cp app/campaigns/migrations/[id]/page.tsx app/campaigns/[id]/page.tsx)",
+      "Bash(cp app/campaigns/migrations/[id]/ats-candidates/page.tsx app/campaigns/[id]/ats-candidates/page.tsx)",
+      "Bash(cp components/MigrationCard.tsx components/CampaignCard.tsx)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(npm ls:*)",
+      "WebFetch(domain:backup-gcl-global.statenweb.com)",
+      "Bash(npm install:*)",
+      "Bash(npx next:*)",
+      "Bash(npm dedupe:*)",
+      "Bash(echo $NODE_ENV)"
+    ]
+  }
+}

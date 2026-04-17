@@ -1,168 +1,231 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import PageHeader from "@/components/PageHeader";
 import MainLayout from "@/components/layouts/MainLayout";
-import { BarChart3, Phone, PhoneCall, Users, Activity, TrendingUp } from "lucide-react";
-
-const usageData = [
-  {
-    title: "Total Calls",
-    value: "2,842",
-    change: "+12%",
-    icon: Phone,
-    color: "text-blue-500",
-  },
-  {
-    title: "Completed Calls",
-    value: "2,431",
-    change: "+8%",
-    icon: PhoneCall,
-    color: "text-green-500",
-  },
-  {
-    title: "Success Rate",
-    value: "85.6%",
-    change: "+3.2%",
-    icon: TrendingUp,
-    color: "text-orange-500",
-  },
-  {
-    title: "Active Users",
-    value: "142",
-    change: "+5%",
-    icon: Users,
-    color: "text-purple-500",
-  },
-];
-
-const usageHistory = [
-  { date: "Dec 1", calls: 120 },
-  { date: "Dec 2", calls: 195 },
-  { date: "Dec 3", calls: 142 },
-  { date: "Dec 4", calls: 210 },
-  { date: "Dec 5", calls: 180 },
-  { date: "Dec 6", calls: 240 },
-  { date: "Dec 7", calls: 280 },
-  { date: "Dec 8", calls: 220 },
-  { date: "Dec 9", calls: 190 },
-  { date: "Dec 10", calls: 260 },
-  { date: "Dec 11", calls: 310 },
-  { date: "Dec 12", calls: 290 },
-  { date: "Dec 13", calls: 340 },
-  { date: "Dec 14", calls: 285 },
-  { date: "Dec 15", calls: 320 },
-];
+import { useBilling } from "@/hooks/useBilling";
+import { UsageRecord } from "@/types/billing";
+import { Phone, PhoneCall, Clock, IndianRupee } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function UsagePage() {
+  const { fetchUsageRecords, loading, error } = useBilling();
+  const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    const loadUsageRecords = async () => {
+      // Fetch all records (limit=1000) to get complete data for stats
+      const result = await fetchUsageRecords(0, 1000);
+      if (result && result.usage) {
+        setUsageRecords(result.usage);
+        setTotal(result.count);
+      }
+    };
+
+    loadUsageRecords();
+  }, [fetchUsageRecords]);
+
+  // Calculate stats from all usage data
+  const totalCalls = total ?? 0; // Use total count from API
+  const totalDuration =
+    usageRecords?.reduce((sum, r) => sum + r.duration_seconds, 0) || 0;
+  const totalBillableMinutes =
+    usageRecords?.reduce((sum, r) => sum + r.billable_minutes, 0) || 0;
+  const totalAmount =
+    usageRecords?.reduce((sum, r) => sum + r.amount_charged, 0) || 0;
+
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m ${s}s`;
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  const statsData = [
+    {
+      title: "Total Calls",
+      value: totalCalls.toString(),
+      icon: Phone,
+      color: "text-blue-500",
+    },
+    {
+      title: "Total Duration",
+      value: formatDuration(totalDuration),
+      icon: Clock,
+      color: "text-green-500",
+    },
+    {
+      title: "Billable Minutes",
+      value: `${totalBillableMinutes} min`,
+      icon: PhoneCall,
+      color: "text-orange-500",
+    },
+    {
+      title: "Total Charged",
+      value: `₹${totalAmount.toFixed(2)}`,
+      icon: IndianRupee,
+      color: "text-purple-500",
+    },
+  ];
+
+  if (error) {
+    return (
+      <MainLayout>
+        <div className="p-6">
+          <PageHeader title="Usage" />
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
+            Error loading usage data: {error}
+          </div>
+        </div>
+      </MainLayout>
+    );
+  }
+
   return (
     <MainLayout>
       <div className="p-6">
-        <PageHeader 
-          title="Usage" 
-        />
-        
+        <PageHeader title="Usage" />
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {usageData.map((item, index) => {
-            const Icon = item.icon;
-            return (
-              <div key={index} className="bg-white rounded-lg shadow p-6 border border-gray-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">{item.title}</p>
-                    <p className="text-2xl font-bold text-gray-900 mt-1">{item.value}</p>
-                    <p className="text-sm text-green-500 font-medium mt-1">{item.change}</p>
-                  </div>
-                  <div className={`p-3 rounded-lg bg-gray-100`}>
-                    <Icon className={`w-6 h-6 ${item.color}`} />
-                  </div>
+          {loading && (!usageRecords || usageRecords.length === 0)
+            ? [...Array(4)].map((_, index) => (
+                <div
+                  key={index}
+                  className="bg-white rounded-lg shadow p-6 border border-gray-200"
+                >
+                  <Skeleton className="h-4 w-24 mb-2" />
+                  <Skeleton className="h-8 w-32 mb-2" />
+                  <Skeleton className="h-4 w-16" />
                 </div>
-              </div>
-            );
-          })}
+              ))
+            : statsData.map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={index}
+                    className="bg-white rounded-lg shadow p-6 border border-gray-200"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-600">
+                          {item.title}
+                        </p>
+                        <p className="text-2xl font-bold text-gray-900 mt-1">
+                          {item.value}
+                        </p>
+                      </div>
+                      <div className={`p-3 rounded-lg bg-gray-100`}>
+                        <Icon className={`w-6 h-6 ${item.color}`} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
         </div>
-        
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-medium text-gray-900">Usage Overview</h2>
-            <div className="flex space-x-2">
-              <button className="px-3 py-1 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
-                Daily
-              </button>
-              <button className="px-3 py-1 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
-                Weekly
-              </button>
-              <button className="px-3 py-1 text-sm rounded-lg bg-orange-500 text-white">
-                Monthly
-              </button>
-            </div>
-          </div>
-          
-          <div className="h-64 flex items-end space-x-1">
-            {usageHistory.map((item, index) => (
-              <div key={index} className="flex flex-col items-center flex-1">
-                <div 
-                  className="w-full bg-orange-500 rounded-t hover:bg-orange-600 transition-colors"
-                  style={{ height: `${(item.calls / 400) * 100}%` }}
-                ></div>
-                <span className="text-xs text-gray-500 mt-2">{item.date}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        
+
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Recent Activity</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">
+            Usage Records
+          </h2>
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Campaign</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Calls Made</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success Rate</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                <tr className="hover:bg-gray-50">
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Holiday Promotion</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">Dec 15, 2023</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">420</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">87%</td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">Completed</span>
-                  </td>
-                </tr>
-                <tr className="hover:bg-gray-50">
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Customer Survey</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">Dec 14, 2023</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">320</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">78%</td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">Completed</span>
-                  </td>
-                </tr>
-                <tr className="hover:bg-gray-50">
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Product Launch</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">Dec 13, 2023</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">580</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">92%</td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700">Running</span>
-                  </td>
-                </tr>
-                <tr className="hover:bg-gray-50">
-                  <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">Follow-up Calls</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">Dec 12, 2023</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">210</td>
-                  <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-600">65%</td>
-                  <td className="px-4 py-4 whitespace-nowrap">
-                    <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-700">Scheduled</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Call SID</TableHead>
+                  <TableHead>Campaign ID</TableHead>
+                  <TableHead>Duration</TableHead>
+                  <TableHead>Billed</TableHead>
+                  <TableHead>Rate</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Date</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading && (!usageRecords || usageRecords.length === 0) ? (
+                  [...Array(5)].map((_, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : usageRecords && usageRecords.length > 0 ? (
+                  usageRecords.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell className="font-mono text-xs">
+                        {record.call_sid}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {record.campaign_id?.substring(0, 8)}...
+                      </TableCell>
+                      <TableCell>
+                        {formatDuration(record.duration_seconds)}
+                      </TableCell>
+                      <TableCell>{record.billable_minutes} min</TableCell>
+                      <TableCell>
+                        ₹{record.rate_per_minute.toFixed(2)}
+                      </TableCell>
+                      <TableCell>₹{record.amount_charged.toFixed(2)}</TableCell>
+                      <TableCell>{formatDate(record.created_at)}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="text-center text-gray-500 py-8"
+                    >
+                      No usage records found
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
+
+          {/* Show total count */}
+          {usageRecords && usageRecords.length > 0 && (
+            <div className="mt-4 text-sm text-gray-500">
+              Showing all {usageRecords.length} usage records
+            </div>
+          )}
         </div>
       </div>
     </MainLayout>

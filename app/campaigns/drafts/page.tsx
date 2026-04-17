@@ -25,7 +25,7 @@ export default function DraftsPage() {
 
   const handleCreateCampaign = () => {
     // Redirect to create campaign modal or page
-    router.push("/campaigns/migrations");
+    router.push("/campaigns");
   };
 
   return (

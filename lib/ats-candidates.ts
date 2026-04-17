@@ -15,7 +15,7 @@ export interface FetchAtsCandidatesResult {
   authFormatUsed: string;
 }
 
-// Shared ATS submissions fetcher used by draft and migration pages.
+// Shared ATS submissions fetcher used by draft and campaign pages.
 export async function fetchAtsCandidatesShared(
   params: FetchAtsCandidatesParams,
 ): Promise<FetchAtsCandidatesResult> {
@@ -43,24 +43,20 @@ export async function fetchAtsCandidatesShared(
     headers["Authorization"] = `${authFormat} ${authToken}`;
   }
 
-  let response = await fetch(
-    `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
-    {
-      method: "GET",
-      headers,
-    },
-  );
+  const url = `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`;
+
+  let response = await fetch(url, {
+    method: "GET",
+    headers,
+  });
 
   if (response.status === 401 && authToken) {
     const alternateFormat = authFormat === "Bearer" ? "Token" : "Bearer";
     headers["Authorization"] = `${alternateFormat} ${authToken}`;
-    response = await fetch(
-      `/api/candidates/submissions?job_id=${jobId}&page=${page}&page_size=${pageSize}`,
-      {
-        method: "GET",
-        headers,
-      },
-    );
+    response = await fetch(url, {
+      method: "GET",
+      headers,
+    });
 
     if (response.ok) {
       authFormat = alternateFormat;

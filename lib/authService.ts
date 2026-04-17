@@ -85,6 +85,19 @@ const authService = {
       throw new Error(data.detail || data.error || 'Login failed');
     }
 
+    // Debug: Log token payload structure
+    if (data.access_token) {
+      try {
+        const payload = JSON.parse(atob(data.access_token.split('.')[1]));
+        console.log('[AuthService] Login token payload:', payload);
+        console.log('[AuthService] Has sub:', payload.sub !== undefined);
+        console.log('[AuthService] Has tenant_id:', payload.tenant_id !== undefined);
+        console.log('[AuthService] Has user_id:', payload.user_id !== undefined);
+      } catch (e) {
+        console.error('[AuthService] Failed to decode token:', e);
+      }
+    }
+
     return data;
   },
 

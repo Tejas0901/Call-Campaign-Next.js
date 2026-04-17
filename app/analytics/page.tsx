@@ -139,7 +139,7 @@ export default function Analytics() {
   const { overall, campaigns } = analyticsData.data;
 
   const handleCampaignClick = (campaignId: string) => {
-    router.push(`/campaigns/migrations/${campaignId}`);
+    router.push(`/campaigns/${campaignId}`);
   };
 
   // Generate sample time series data for call performance chart

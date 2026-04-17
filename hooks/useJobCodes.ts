@@ -35,11 +35,16 @@ export function useJobCodes(authToken?: string) {
   const [jobs, setJobs] = useState<JobData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Track if a fetch was already attempted to prevent infinite retry loops
+  const [fetchAttempted, setFetchAttempted] = useState(false);
 
   console.log("[useJobCodes] Hook called with authToken:", !!authToken, authToken ? `${authToken.substring(0, 30)}...` : "undefined/null");
 
+  // Reset fetchAttempted when token changes so it can retry with new token
   useEffect(() => {
     console.log("[useJobCodes] useEffect - authToken changed:", !!authToken);
+    setFetchAttempted(false);
+    setError(null);
   }, [authToken]);
 
   // Fetch all job codes from the API
@@ -47,6 +52,7 @@ export function useJobCodes(authToken?: string) {
     console.log("[fetchJobCodes] Called, authToken available:", !!authToken, authToken ? `${authToken.substring(0, 30)}...` : "undefined/null");
     setLoading(true);
     setError(null);
+    setFetchAttempted(true);
     try {
       console.log("[fetchJobCodes] Calling fetchJobsFromHyrex with authToken");
       const data = await fetchJobsFromHyrex(1, 100, authToken);
@@ -75,9 +81,7 @@ export function useJobCodes(authToken?: string) {
         }
 
         // Otherwise fetch it with filter
-
-
-          const data = await filterJobsByCode(jobCode, authToken);
+        const data = await filterJobsByCode(jobCode, authToken);
         return data.results?.[0] || null;
       } catch (err) {
         console.error("Error fetching job by code:", err);
@@ -109,6 +113,7 @@ export function useJobCodes(authToken?: string) {
     jobs,
     loading,
     error,
+    fetchAttempted,
     fetchJobCodes,
     fetchJobByCode,
     searchJobs,

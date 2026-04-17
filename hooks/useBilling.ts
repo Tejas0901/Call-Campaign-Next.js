@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useApiCall } from './useApiCall';
+import tokenStorage from '@/lib/tokenStorage';
 import {
   BalanceData,
   TransactionHistoryResponse,
@@ -62,7 +63,7 @@ export function useBilling() {
   };
 
   // Fetch usage records
-  const fetchUsageRecords = async (
+  const fetchUsageRecords = useCallback(async (
     skip: number = 0,
     limit: number = 50,
     campaignId?: string,
@@ -75,16 +76,26 @@ export function useBilling() {
       if (dateFrom) url += `&date_from=${dateFrom}`;
       if (dateTo) url += `&date_to=${dateTo}`;
       
-      const response = await fetch(url);
+      // Get auth token
+      const token = tokenStorage.getAccessToken();
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(url, { headers });
       const data = await response.json();
       
-      if (!data.success) {
+      // The API returns { usage: [], count: n } directly
+      if (!response.ok) {
         throw new Error(data.detail || 'Failed to fetch usage records');
       }
       
-      return data.data;
+      return data;
     });
-  };
+  }, [call]);
 
   // Fetch invoices
   const fetchInvoices = async (): Promise<InvoiceListResponse | null> => {

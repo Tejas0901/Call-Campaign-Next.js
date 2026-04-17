@@ -28,14 +28,14 @@ export default function UsageRecords({ limit = 10 }: UsageRecordsProps) {
   useEffect(() => {
     const loadUsageRecords = async () => {
       const result = await fetchUsageRecords(currentPage * limit, limit);
-      if (result) {
+      if (result && result.usage) {
         setUsageRecords(result.usage);
         setTotal(result.count);
       }
     };
 
     loadUsageRecords();
-  }, [currentPage, limit]);
+  }, [currentPage, limit, fetchUsageRecords]);
 
   const totalPages = Math.ceil(total / limit);
 
